@@ -6,7 +6,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git 'https://github.com/your/repo.git'
+                git 'https://github.com/PS-Thoufiq/AI_Interviewer.git'
             }
         }
 
