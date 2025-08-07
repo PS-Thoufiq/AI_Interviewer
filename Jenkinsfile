@@ -1,3 +1,5 @@
+def dockerImage  // Declare global variable
+
 pipeline {
     agent any
     parameters {

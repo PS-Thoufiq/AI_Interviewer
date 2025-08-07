@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 const technologies = [
-  "Java Spring Boot", "Python", "Node.js Express", "React.js", "Angular",
+  "Service Now","Java Spring Boot", "Python", "Node.js Express", "React.js", "Angular",
   "AWS", "Docker", "Kubernetes", "SQL Databases", "GraphQL",
   "Frontend Development", "Backend Development", "Full Stack Development", "DevOps",
   "Machine Learning", "Data Science", "Mobile Development", "Cybersecurity",
