@@ -11,8 +11,10 @@
   },
   "dependencies": {
     "jspdf": "^3.0.1",
+    "pdfjs-dist": "^5.4.54",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "react-markdown": "^9.0.1",
     "react-router-dom": "^7.7.1",
     "react-speech-recognition": "^4.0.1"
   },
