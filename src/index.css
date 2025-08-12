@@ -1,0 +1,6 @@
+body {
+  background-color: #121212;
+  color: #e0e0e0; /* optional: to make text visible on dark background */
+  margin: 0;
+  padding: 0;
+}

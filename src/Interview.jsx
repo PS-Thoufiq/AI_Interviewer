@@ -5,12 +5,13 @@ import { InterviewOrchestrator } from "./orchestrator";
 import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition";
 import { jsPDF } from "jspdf";
 import ReactMarkdown from "react-markdown";
-import logo from "./assets/zeero-ai.png"
+import logo from "./assets/zeero-ai.png";
+import Editor from '@monaco-editor/react';
 
 export default function Interview() {
   const location = useLocation();
   const { topic, resumeSkills = [] } = location.state || { topic: "Java Spring Boot", resumeSkills: [] };
-  const INITIAL_AI_QUESTION = `Hello! I'm your ZEERO AI interviewer specialized in ${resumeSkills.length > 0 ? resumeSkills.join(", ") : topic}. I'll be asking you questions to assess your background and skills. Let's start with your introduction — please tell me about your background and work with ${resumeSkills.length > 0 ? resumeSkills.join(", ") : topic}.`;
+  const INITIAL_AI_QUESTION = `Hello! I'm your AI interviewer specialized in ${resumeSkills.length > 0 ? resumeSkills.join(", ") : topic}. I'll be asking you questions to assess your background and skills. Let's start with your introduction — please tell me about your background and work with ${resumeSkills.length > 0 ? resumeSkills.join(", ") : topic}.`;
 
   const [experience, setExperience] = useState("");
   const [conversation, setConversation] = useState([]);
@@ -28,6 +29,8 @@ export default function Interview() {
   const [timer, setTimer] = useState(0);
   const [availableVoices, setAvailableVoices] = useState([]);
   const [selectedVoice, setSelectedVoice] = useState(null);
+  const [showCodingPopup, setShowCodingPopup] = useState(false);
+  const [codingAnswer, setCodingAnswer] = useState("");
   const orchestratorRef = useRef(null);
   const timerRef = useRef(null);
   const lastAIIndex = useRef(0);
@@ -74,18 +77,57 @@ export default function Interview() {
     }
   }, [interviewStarted, conversation.length]);
 
+  // Show coding popup for coding questions
+  useEffect(() => {
+    if (conversation.length > 0) {
+      const lastMsg = conversation[conversation.length - 1];
+      console.log("Last message:", lastMsg); // Debug: Log last message
+      console.log("Message type:", lastMsg.type, "Role:", lastMsg.role); // Debug: Log type and role
+      if (lastMsg.role === "ai" && lastMsg.type === "coding") {
+        console.log("Showing coding popup for question:", lastMsg.text); // Debug
+        setShowCodingPopup(true);
+        const currentSkill = orchestratorRef.current?.getCurrentSkill();
+        console.log("Current skill:", currentSkill); // Debug
+        const boilerplate = orchestratorRef.current?.getBoilerplateCode(currentSkill) || 
+          parseCodingQuestion(lastMsg.text).boilerplate;
+        console.log("Boilerplate code:", boilerplate); // Debug
+        setCodingAnswer(boilerplate);
+      } else {
+        console.log("Hiding coding popup"); // Debug
+        setShowCodingPopup(false);
+      }
+    }
+  }, [conversation]);
+
   // Text-to-speech
   const speak = (text, questionType) => {
     if (!window.speechSynthesis) {
       console.warn("Text-to-speech not supported in this browser.");
       return;
     }
-    if (questionType === "regular" || questionType === "mcq") {
-      const utter = new SpeechSynthesisUtterance(text);
-      utter.lang = "en-US";
-      if (selectedVoice) utter.voice = selectedVoice;
-      window.speechSynthesis.speak(utter);
+    let speechText;
+    if (questionType === "mcq") {
+      speechText = "Answer this MCQ question";
+    } else if (questionType === "coding") {
+      speechText = "Solve this coding question";
+    } else {
+      speechText = text; // For regular questions, speak the full text
     }
+    const utter = new SpeechSynthesisUtterance(speechText);
+    utter.lang = "en-US";
+    if (selectedVoice) utter.voice = selectedVoice;
+    if (questionType === "regular") {
+      utter.onend = () => {
+        setTimeout(() => {
+          if (!listening) {
+            resetTranscript();
+            setAnswer("");
+            SpeechRecognition.startListening({ continuous: true, language: "en-US" });
+          }
+        }, 5000);
+      };
+    }
+    window.speechSynthesis.speak(utter);
   };
 
   // Demo voice playback
@@ -118,11 +160,20 @@ export default function Interview() {
 
   // Parse AI question to determine type
   const parseQuestionType = (text) => {
+    console.log("Parsing question type for text:", text); // Debug
     if (text.includes("Options:\nA)")) {
+      console.log("Detected MCQ question"); // Debug
       return "mcq";
-    } else if (text.startsWith("Solve this problem:")) {
+    } else if (
+      text.startsWith("Solve this problem:") || 
+      text.toLowerCase().includes("write a") || 
+      text.includes("```") || 
+      text.toLowerCase().includes("coding problem")
+    ) {
+      console.log("Detected coding question"); // Debug
       return "coding";
     }
+    console.log("Detected regular question"); // Debug
     return "regular";
   };
 
@@ -141,9 +192,22 @@ export default function Interview() {
     return { question, code, options };
   };
 
+  // Parse coding question
+  const parseCodingQuestion = (text) => {
+    const parts = text.split("\n```");
+    const description = parts[0].replace("Solve this problem:", "").trim();
+    const boilerplate = parts.length > 1 ? parts[1].replace(/^\w*\n/, "").trim() : "";
+    console.log("Parsed coding question - Description:", description, "Boilerplate:", boilerplate); // Debug
+    return { description, boilerplate };
+  };
+
   // Handle sending the answer
   const handleSend = async () => {
     if (!answer.trim() && !mcqSelection) return;
+
+    if (listening) {
+      SpeechRecognition.stopListening();
+    }
 
     const lastQuestion = conversation[conversation.length - 1];
     const isMcq = lastQuestion.type === "mcq";
@@ -155,6 +219,7 @@ export default function Interview() {
 
     try {
       const nextStage = orchestratorRef.current.decideNextState(userAnswer, updatedConversation);
+      console.log("Next stage:", nextStage); // Debug
       if (!nextStage) {
         setConversation([...updatedConversation, { role: "ai", text: "Thank you for the interview! Please generate your reports.", type: "regular", stage: "wrapup" }]);
         setLoading(false);
@@ -171,6 +236,7 @@ export default function Interview() {
         resumeSkills
       });
       const questionType = parseQuestionType(aiResponse);
+      console.log("AI response:", aiResponse, "Question type:", questionType); // Debug
       setConversation([...updatedConversation, { role: "ai", text: aiResponse, type: questionType, stage: nextStage }]);
     } catch (err) {
       console.error("Error fetching next question:", err);
@@ -185,10 +251,77 @@ export default function Interview() {
     setLoading(false);
   };
 
+  // Handle coding submit
+  const handleCodingSubmit = async () => {
+    if (!codingAnswer.trim()) return;
+
+    setLoading(true);
+
+    const formattedAnswer = codingAnswer.startsWith('```') 
+      ? codingAnswer 
+      : `\`\`\`\n${codingAnswer}\n\`\`\``;
+
+    const updatedConversation = [
+      ...conversation, 
+      { 
+        role: "user", 
+        text: formattedAnswer, 
+        type: "coding", 
+        stage: conversation[conversation.length - 1].stage 
+      }
+    ];
+
+    setConversation(updatedConversation);
+    setShowCodingPopup(false);
+
+    try {
+      const nextStage = orchestratorRef.current.decideNextState(formattedAnswer, updatedConversation);
+      console.log("Next stage after coding:", nextStage); // Debug
+      if (!nextStage) {
+        setConversation([...updatedConversation, { 
+          role: "ai", 
+          text: "Thank you for the interview! Please generate your reports.", 
+          type: "regular", 
+          stage: "wrapup" 
+        }]);
+        setLoading(false);
+        clearInterval(timerRef.current);
+        return;
+      }
+
+      const aiResponse = await getNextQuestion({
+        prompt: formattedAnswer,
+        experienceRange: orchestratorRef.current.experienceLevel || "0-2",
+        conversationHistory: updatedConversation,
+        topic,
+        stage: nextStage,
+        resumeSkills
+      });
+
+      const questionType = parseQuestionType(aiResponse);
+      console.log("AI response after coding:", aiResponse, "Question type:", questionType); // Debug
+      setConversation([...updatedConversation, { 
+        role: "ai", 
+        text: aiResponse, 
+        type: questionType, 
+        stage: nextStage 
+      }]);
+    } catch (err) {
+      console.error("Error processing coding answer:", err);
+      setConversation([
+        ...updatedConversation,
+        { role: "ai", text: "Sorry, there was an error processing your code.", type: "regular", stage: "error" }
+      ]);
+    }
+
+    setCodingAnswer("");
+    setLoading(false);
+  };
+
   // Handle skipping a question
   const handleSkip = async () => {
     const lastQuestion = conversation[conversation.length - 1];
-    if (lastQuestion.type === "mcq") return; // MCQ has skip option
+    if (lastQuestion.type === "mcq") return;
 
     const updatedConversation = [...conversation, { role: "user", text: "Skipped", type: lastQuestion.type, stage: lastQuestion.stage }];
     setConversation(updatedConversation);
@@ -196,6 +329,7 @@ export default function Interview() {
 
     try {
       const nextStage = orchestratorRef.current.decideNextState("Skipped", updatedConversation);
+      console.log("Next stage after skip:", nextStage); // Debug
       if (!nextStage) {
         setConversation([...updatedConversation, { role: "ai", text: "Thank you for the interview! Please generate your reports.", type: "regular", stage: "wrapup" }]);
         setLoading(false);
@@ -212,6 +346,7 @@ export default function Interview() {
         resumeSkills
       });
       const questionType = parseQuestionType(aiResponse);
+      console.log("AI response after skip:", aiResponse, "Question type:", questionType); // Debug
       setConversation([...updatedConversation, { role: "ai", text: aiResponse, type: questionType, stage: nextStage }]);
     } catch (err) {
       console.error("Error fetching next question:", err);
@@ -374,102 +509,11 @@ export default function Interview() {
   };
 
   const handleImageError = (e) => {
+    console.error("Failed to load AI avatar image:", e); // Debug
     e.target.src = "https://via.placeholder.com/40?text=AI";
   };
 
   const conversationHistory = conversation.filter((msg, idx) => idx > 0);
-
-  // Report Popup Component
-  const ReportPopup = ({ title, content, onClose, onDownload }) => (
-    <div
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: "rgba(0,0,0,0.9)",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        zIndex: 1000,
-      }}
-    >
-      <div
-        style={{
-          backgroundColor: "#2d2d2d",
-          padding: "20px",
-          borderRadius: "10px",
-          maxWidth: "700px",
-          maxHeight: "80vh",
-          overflowY: "auto",
-          color: "#e0e0e0",
-          border: "1px solid #444",
-          position: "relative",
-          width: "90%",
-        }}
-      >
-        <button
-          onClick={onClose}
-          style={{
-            position: "absolute",
-            top: "10px",
-            right: "10px",
-            background: "none",
-            border: "none",
-            color: "#e53935",
-            fontSize: "20px",
-            cursor: "pointer",
-            fontWeight: "bold",
-          }}
-        >
-          ✕
-        </button>
-        <h2 style={{ color: "#4fc3f7", textAlign: "center", marginBottom: "20px" }}>
-          {title}
-        </h2>
-        <ReactMarkdown
-          components={{
-            h1: ({ node, ...props }) => (
-              <h1 style={{ color: "#4fc3f7", margin: "20px 0 10px" }} {...props} />
-            ),
-            h2: ({ node, ...props }) => (
-              <h2 style={{ color: "#4fc3f7", margin: "15px 0 8px" }} {...props} />
-            ),
-            p: ({ node, ...props }) => (
-              <p style={{ margin: "10px 0", lineHeight: "1.6" }} {...props} />
-            ),
-            ul: ({ node, ...props }) => (
-              <ul style={{ paddingLeft: "20px", margin: "10px 0" }} {...props} />
-            ),
-            li: ({ node, ...props }) => (
-              <li style={{ margin: "5px 0" }} {...props} />
-            ),
-          }}
-        >
-          {content}
-        </ReactMarkdown>
-        <div style={{ textAlign: "center", marginTop: "20px" }}>
-          <button
-            onClick={onDownload}
-            style={{
-              padding: "10px 20px",
-              backgroundColor: "#0288d1",
-              color: "#fff",
-              border: "none",
-              borderRadius: "6px",
-              cursor: "pointer",
-              fontSize: "16px",
-              fontWeight: "bold",
-              transition: "all 0.3s",
-            }}
-          >
-            Download PDF
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 
   if (!browserSupportsSpeechRecognition) {
     return <div style={{ color: "#fff" }}>Your browser does not support speech recognition.</div>;
@@ -517,9 +561,9 @@ export default function Interview() {
               Interview Instructions
             </h2>
             <ol style={{ lineHeight: "1.8", textAlign: "left", paddingLeft: "20px" }}>
-              <li style={{ marginBottom: "10px" }}>Read the AI's question carefully. Regular and MCQ questions will be read aloud; coding questions are displayed only.</li>
+              <li style={{ marginBottom: "10px" }}>Read the AI's question carefully. Regular questions will be read aloud; MCQ and coding questions are displayed only.</li>
               <li style={{ marginBottom: "10px" }}>
-                To answer through voice (for regular or coding questions):
+                To answer through voice (for regular questions):
                 <ul style={{ paddingLeft: "20px", marginTop: "5px" }}>
                   <li>
                     Click <strong style={{ color: "#4fc3f7" }}>"Start Answer"</strong> to begin recording
@@ -548,11 +592,11 @@ export default function Interview() {
                 <strong style={{ color: "#4fc3f7" }}>"Send Answer"</strong>.
               </li>
               <li style={{ marginBottom: "10px" }}>
-                For coding questions, write your code in the provided text area with boilerplate.
+                For coding questions, a popup code editor will appear to write your code.
               </li>
               <li style={{ marginBottom: "10px" }}>
                 Click <strong style={{ color: "#4fc3f7" }}>"🔊 Read Last Question"</strong> to hear
-                the last regular/MCQ question again.
+                the last regular question again or the prompt for MCQ/coding questions.
               </li>
               <li style={{ marginBottom: "10px" }}>
                 Click <strong style={{ color: "#4fc3f7" }}>"End Interview"</strong> to conclude early.
@@ -687,7 +731,7 @@ export default function Interview() {
             textAlign: "center",
             marginBottom: "20px"
           }}>
-            ZEERO AI Interviewer 
+            ZEERO AI Interviewer ({resumeSkills.length > 0 ? resumeSkills.join(", ") : topic})
           </h2>
 
           <div
@@ -748,7 +792,7 @@ export default function Interview() {
                   )}
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <b>{msg.role === "ai" ? "Zeero AI" : "You"} ({msg.stage}):</b>
+                      <b>{msg.role === "ai" ? "ZEERO AI" : "You"} ({msg.stage}):</b>
                       {msg.role === "ai" && msg.type !== "mcq" && idx === conversation.length - 1 && (
                         <button
                           onClick={handleSkip}
@@ -787,16 +831,26 @@ export default function Interview() {
                       </div>
                     ) : msg.role === "ai" && msg.type === "coding" ? (
                       <div>
-                        <pre
-                          style={{
-                            background: "#1a1a1a",
-                            padding: "10px",
-                            borderRadius: "6px",
-                            whiteSpace: "pre-wrap",
+                        <ReactMarkdown
+                          components={{
+                            p: ({ children }) => <p style={{ margin: "10px 0", color: "#e0e0e0" }}>{children}</p>,
+                            code: ({ children }) => (
+                              <pre
+                                style={{
+                                  background: "#1a1a1a",
+                                  padding: "10px",
+                                  borderRadius: "6px",
+                                  whiteSpace: "pre-wrap",
+                                  color: "#d4d4d4",
+                                }}
+                              >
+                                {children}
+                              </pre>
+                            ),
                           }}
                         >
                           {msg.text}
-                        </pre>
+                        </ReactMarkdown>
                       </div>
                     ) : (
                       msg.text
@@ -860,7 +914,10 @@ export default function Interview() {
                         name="mcq"
                         value={option}
                         checked={mcqSelection === option}
-                        onChange={(e) => setMcqSelection(e.target.value)}
+                        onChange={(e) => {
+                          setMcqSelection(e.target.value);
+                          handleSend();
+                        }}
                         style={{ marginRight: "10px" }}
                         disabled={loading || !interviewStarted}
                       />
@@ -890,7 +947,7 @@ export default function Interview() {
                     ? "monospace"
                     : "inherit",
                 }}
-                disabled={loading || !interviewStarted}
+                disabled={loading || !interviewStarted || showCodingPopup}
               />
             )}
           </div>
@@ -989,11 +1046,12 @@ export default function Interview() {
             <button
               onClick={() => {
                 SpeechRecognition.stopListening();
+                handleSend();
               }}
               disabled={!listening || loading}
               style={buttonStyle}
             >
-              Stop
+              Stop and Send
             </button>
             <button
               onClick={handleSend}
@@ -1072,25 +1130,361 @@ export default function Interview() {
         </div>
       </div>
 
+      {/* Coding Popup */}
+      {showCodingPopup && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.9)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 1000,
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "#2d2d2d",
+              padding: "30px",
+              borderRadius: "10px",
+              maxWidth: "900px",
+              maxHeight: "90vh",
+              width: "90%",
+              overflow: "auto",
+              color: "#e0e0e0",
+              border: "1px solid #444",
+            }}
+          >
+            <h2 style={{ color: "#4fc3f7", textAlign: "center", marginBottom: "20px" }}>
+              Code Editor
+            </h2>
+            <div style={{ marginBottom: "20px" }}>
+              <ReactMarkdown
+                components={{
+                  p: ({ children }) => <p style={{ margin: "10px 0", color: "#e0e0e0" }}>{children}</p>,
+                  code: ({ children }) => (
+                    <pre
+                      style={{
+                        background: "#1a1a1a",
+                        padding: "10px",
+                        borderRadius: "6px",
+                        whiteSpace: "pre-wrap",
+                      }}
+                    >
+                      {children}
+                    </pre>
+                  ),
+                }}
+              >
+                {conversation[conversation.length - 1]?.text}
+              </ReactMarkdown>
+            </div>
+            <Editor
+              height="60vh"
+              language={
+                conversation[conversation.length - 1]?.text.toLowerCase().includes("python") ? "python" :
+                conversation[conversation.length - 1]?.text.toLowerCase().includes("java") ? "java" :
+                conversation[conversation.length - 1]?.text.toLowerCase().includes("javascript") ? "javascript" :
+                "plaintext" // Fallback
+              }
+              theme="vs-dark"
+              value={codingAnswer}
+              onChange={(value) => setCodingAnswer(value || "")}
+              options={{
+                minimap: { enabled: false },
+                fontSize: 14,
+                wordWrap: "on",
+                automaticLayout: true,
+              }}
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "20px" }}>
+              <button
+                onClick={() => {
+                  setShowCodingPopup(false);
+                  setCodingAnswer("");
+                }}
+                style={{
+                  padding: "10px 20px",
+                  backgroundColor: "#e53935",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  marginRight: "10px",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCodingSubmit}
+                disabled={loading || !codingAnswer.trim()}
+                style={{
+                  padding: "10px 20px",
+                  backgroundColor: codingAnswer.trim() ? "#4caf50" : "#333",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "6px",
+                  cursor: codingAnswer.trim() ? "pointer" : "not-allowed",
+                }}
+              >
+                {loading ? "Submitting..." : "Submit Code"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* User Report Popup */}
       {showUserReportPopup && (
-        <ReportPopup
-          title={`Candidate Feedback Report: ${resumeSkills.length > 0 ? resumeSkills.join(", ") : topic}`}
-          content={userReport}
-          onClose={() => setShowUserReportPopup(false)}
-          onDownload={downloadUserReport}
-        />
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.9)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 1000,
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "#2d2d2d",
+              padding: "30px",
+              borderRadius: "10px",
+              maxWidth: "700px",
+              maxHeight: "80vh",
+              overflow: "auto",
+              color: "#e0e0e0",
+              border: "1px solid #444",
+              position: "relative",
+            }}
+          >
+            <button
+              onClick={() => setShowUserReportPopup(false)}
+              style={{
+                position: "absolute",
+                top: "10px",
+                right: "10px",
+                backgroundColor: "#e53935",
+                color: "#fff",
+                border: "none",
+                borderRadius: "50%",
+                width: "30px",
+                height: "30px",
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                cursor: "pointer",
+                fontSize: "16px",
+              }}
+            >
+              X
+            </button>
+            <h2 style={{ color: "#4fc3f7", textAlign: "center", marginBottom: "20px" }}>
+              Candidate Feedback Report
+            </h2>
+            {userReport ? (
+              <div style={{ lineHeight: "1.6" }}>
+                <ReactMarkdown
+                  components={{
+                    h1: ({ children }) => <h1 style={{ color: "#4fc3f7", margin: "20px 0 10px" }}>{children}</h1>,
+                    h2: ({ children }) => <h2 style={{ color: "#4fc3f7", margin: "15px 0 10px" }}>{children}</h2>,
+                    p: ({ children }) => <p style={{ margin: "10px 0", color: "#e0e0e0" }}>{children}</p>,
+                    ul: ({ children }) => <ul style={{ paddingLeft: "20px", margin: "10px 0", color: "#e0e0e0" }}>{children}</ul>,
+                    li: ({ children }) => <li style={{ margin: "5px 0" }}>{children}</li>,
+                  }}
+                >
+                  {userReport}
+                </ReactMarkdown>
+                <div style={{ textAlign: "center", marginTop: "20px" }}>
+                  <button
+                    onClick={downloadUserReport}
+                    style={{
+                      padding: "10px 20px",
+                      backgroundColor: "#0288d1",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "6px",
+                      cursor: "pointer",
+                      fontSize: "16px",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    Download Report
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ textAlign: "center", color: "#a0a0a0" }}>
+                Generating report...
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Client Report Popup */}
       {showClientReportPopup && (
-        <ReportPopup
-          title={`Recruiter Report: ${resumeSkills.length > 0 ? resumeSkills.join(", ") : topic}`}
-          content={clientReport}
-          onClose={() => setShowClientReportPopup(false)}
-          onDownload={downloadClientReport}
-        />
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.9)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 1000,
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "#2d2d2d",
+              padding: "30px",
+              borderRadius: "10px",
+              maxWidth: "700px",
+              maxHeight: "80vh",
+              overflow: "auto",
+              color: "#e0e0e0",
+              border: "1px solid #444",
+              position: "relative",
+            }}
+          >
+            <button
+              onClick={() => setShowClientReportPopup(false)}
+              style={{
+                position: "absolute",
+                top: "10px",
+                right: "10px",
+                backgroundColor: "#e53935",
+                color: "#fff",
+                border: "none",
+                borderRadius: "50%",
+                width: "30px",
+                height: "30px",
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                cursor: "pointer",
+                fontSize: "16px",
+              }}
+            >
+              X
+            </button>
+            <h2 style={{ color: "#4fc3f7", textAlign: "center", marginBottom: "20px" }}>
+              Recruiter Report
+            </h2>
+            {clientReport ? (
+              <div style={{ lineHeight: "1.6" }}>
+                <ReactMarkdown
+                  components={{
+                    h1: ({ children }) => <h1 style={{ color: "#4fc3f7", margin: "20px 0 10px" }}>{children}</h1>,
+                    h2: ({ children }) => <h2 style={{ color: "#4fc3f7", margin: "15px 0 10px" }}>{children}</h2>,
+                    p: ({ children }) => <p style={{ margin: "10px 0", color: "#e0e0e0" }}>{children}</p>,
+                    ul: ({ children }) => <ul style={{ paddingLeft: "20px", margin: "10px 0", color: "#e0e0e0" }}>{children}</ul>,
+                    li: ({ children }) => <li style={{ margin: "5px 0" }}>{children}</li>,
+                  }}
+                >
+                  {clientReport}
+                </ReactMarkdown>
+                <div style={{ textAlign: "center", marginTop: "20px" }}>
+                  <button
+                    onClick={downloadClientReport}
+                    style={{
+                      padding: "10px 20px",
+                      backgroundColor: "#0288d1",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "6px",
+                      cursor: "pointer",
+                      fontSize: "16px",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    Download Report
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ textAlign: "center", color: "#a0a0a0" }}>
+                Generating report...
+              </div>
+            )}
+          </div>
+        </div>
       )}
+
+      {/* Global Styles */}
+      <style>
+        {`
+          @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+          }
+          textarea:focus, select:focus, button:focus, input:focus {
+            outline: 1px solid #4fc3f7;
+            box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.3);
+          }
+          body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+              'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+              sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            background-color: #121212;
+            color: #e0e0e0;
+          }
+          code {
+            font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+              monospace;
+          }
+          .code-editor {
+            font-family: 'Fira Code', 'Consolas', monospace;
+            tab-size: 2;
+          }
+          .code-editor:focus {
+            outline: none;
+          }
+          pre {
+            position: העrelative;
+          }
+          pre code {
+            display: block;
+            padding: 1em;
+            overflow-x: auto;
+          }
+          .token.comment,
+          .token.prolog,
+          .token.doctype,
+          .token.cdata {
+            color: #6a9955;
+          }
+          .token.punctuation {
+            color: #d4d4d4;
+          }
+          .token.property,
+          .token.tag,
+          .token.boolean,
+          .token.number,
+          .token.constant,
+          .token.symbol,
+          .token.deleted {
+            color: #b5cea8;
+          }
+        `}
+      </style>
     </div>
   );
 }
@@ -1127,35 +1521,3 @@ const dotStyle = (delay) => ({
     },
   },
 });
-
-// Add global styles
-document.head.insertAdjacentHTML(
-  "beforeend",
-  `
-  <style>
-    @keyframes pulse {
-      0% { opacity: 1; }
-      50% { opacity: 0.5; }
-      100% { opacity: 1; }
-    }
-    textarea:focus, select:focus, button:focus, input:focus {
-      outline: 1px solid #4fc3f7;
-      box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.3);
-    }
-    body {
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-        'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-        sans-serif;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-      background-color: #121212;
-      color: #e0e0e0;
-    }
-    code {
-      font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-        monospace;
-    }
-  </style>
-`
-);

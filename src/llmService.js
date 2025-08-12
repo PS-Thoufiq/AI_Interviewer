@@ -8,15 +8,58 @@ export async function getNextQuestion({ prompt, experienceRange, conversationHis
     "4-6": "Advanced"
   };
   const level = EXPERIENCE_LEVELS[experienceRange] || "Beginner";
-  const currentSkill = resumeSkills.length > 0 ? resumeSkills[conversationHistory.filter(msg => msg.stage === "technical" || msg.stage === "mcq" || msg.stage === "coding").length % resumeSkills.length] : topic;
+  const currentSkill = resumeSkills.length > 0
+    ? resumeSkills[conversationHistory.filter(msg => msg.stage === "mcq" || msg.stage === "coding").length % resumeSkills.length]
+    : topic;
 
-  const systemPrompt = `
+  const systemPromptBase = `
     You are a professional technical interviewer with a friendly, conversational tone, mimicking a human interviewer. Focus on ${currentSkill || topic}. The candidate's experience level is ${level}. Their last input: '${prompt}'. Conversation history: '${JSON.stringify(conversationHistory)}'. Current stage: ${stage}.
 
-    Ensure questions are concise (max 50 words), clear, and relevant. For background, ask about projects, skills, or experience to assess expertise. For MCQ, provide exactly four plausible options. For coding, include a problem and boilerplate code as specified.
-
-    Prompt: ${prompt}
+    Ensure questions are concise (max 50 words), clear, and relevant.
   `;
+
+  let systemPrompt = "";
+
+  if (stage === "background") {
+    systemPrompt = systemPromptBase + `
+      For the background stage, ask ONLY questions about candidate's projects, skills, and experience related to their background. Do NOT ask multiple choice or coding questions.
+    `;
+  } else if (stage === "mcq") {
+    systemPrompt = systemPromptBase + `
+      For the MCQ stage, provide exactly four plausible multiple choice options for technical questions related to ${currentSkill || topic}.
+      Format as:
+      Question: [text]
+      Options:
+      A) [Option1]
+      B) [Option2]
+      C) [Option3]
+      D) [Option4]
+    `;
+  } else if (stage === "coding") {
+    systemPrompt = systemPromptBase + `
+      For the coding stage, provide a coding problem for ${currentSkill || topic} with a clear problem description and boilerplate code.
+      Format strictly as:
+      Solve this problem: [Problem description]
+      Boilerplate Code:
+      \`\`\`[language]
+      [Boilerplate code]
+      \`\`\`
+      Example:
+      Solve this problem: Write a function to reverse a string in ${currentSkill || topic}.
+      Boilerplate Code:
+      \`\`\`python
+      def reverse_string(s):
+          # Your code here
+          pass
+      \`\`\`
+    `;
+  } else if (stage === "wrapup") {
+    systemPrompt = systemPromptBase + `
+      For the wrapup stage, ask any final summary or feedback questions.
+    `;
+  } else {
+    systemPrompt = systemPromptBase;
+  }
 
   const body = {
     messages: [
@@ -37,11 +80,13 @@ export async function getNextQuestion({ prompt, experienceRange, conversationHis
   });
 
   if (!response.ok) {
-    throw new Error("Failed to fetch from Azure GPT-4o API");
+    throw new Error(`Failed to fetch from Azure GPT-4o API: ${response.status} ${response.statusText}`);
   }
 
   const data = await response.json();
-  return data?.choices?.[0]?.message?.content || "";
+  const content = data?.choices?.[0]?.message?.content || "";
+  console.log("API response for next question:", content); // Debug
+  return content;
 }
 
 export async function generateUserReport({ experienceRange, conversationHistory, topic, resumeSkills = [] }) {
@@ -53,7 +98,7 @@ export async function generateUserReport({ experienceRange, conversationHistory,
   const level = EXPERIENCE_LEVELS[experienceRange] || "Beginner";
 
   const reportPrompt = `
-    You are an expert technical interviewer for ${topic}. Based on the interview conversation (stages: greeting, background, technical, followup, mcq, coding, behavioral, wrapup), provide a candidate-focused report. Analyze responses for depth, clarity, and engagement, noting skipped questions.
+    You are an expert technical interviewer for ${topic}. Based on the interview conversation (stages: greeting, background, mcq, coding, wrapup), provide a candidate-focused report. Analyze responses for depth, clarity, and engagement, noting skipped questions.
 
     Candidate's level: ${level}.
     Conversation: ${JSON.stringify(conversationHistory)}.
@@ -111,7 +156,7 @@ export async function generateClientReport({ experienceRange, conversationHistor
   const level = EXPERIENCE_LEVELS[experienceRange] || "Beginner";
 
   const reportPrompt = `
-    You are an expert technical interviewer for ${topic}. Based on the interview conversation (stages: greeting, background, technical, followup, mcq, coding, behavioral, wrapup), provide a recruiter-focused report. Analyze responses for depth, accuracy, and clarity, noting skipped questions and resume skill coverage.
+    You are an expert technical interviewer for ${topic}. Based on the interview conversation (stages: greeting, background, mcq, coding, wrapup), provide a recruiter-focused report. Analyze responses for depth, accuracy, and clarity, noting skipped questions and resume skill coverage.
 
     Candidate's level: ${level}.
     Conversation: ${JSON.stringify(conversationHistory)}.
@@ -151,7 +196,6 @@ export async function generateClientReport({ experienceRange, conversationHistor
     - Background: [Analysis]
     - MCQ: [Analysis]
     - Coding: [Analysis]
-    - Behavioral: [Analysis]
 
     ## Overall Score
     - NN/100
