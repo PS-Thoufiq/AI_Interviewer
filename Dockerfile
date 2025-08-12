@@ -1,13 +1,13 @@
-# Stage 1: Build
+# Stage 1: Build the app
 FROM node:18 AS builder
 
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --silent
+RUN npm install --silent
 COPY . .
 RUN npm run build
 
-# Stage 2: Serve
+# Stage 2: Serve the app
 FROM node:18
 
 WORKDIR /app
