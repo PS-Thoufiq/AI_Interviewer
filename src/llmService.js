@@ -13,14 +13,37 @@ export async function getNextQuestion({ prompt, experienceRange, conversationHis
     : topic;
 
   const systemPromptBase = `
-You are a professional technical interviewer with a friendly, conversational tone, mimicking a human interviewer. Focus on ${currentSkill || topic}. The candidate's experience level is ${level}. Their.panels Their last input: '${prompt}'. Conversation history: '${JSON.stringify(conversationHistory)}'. Current stage: ${stage}.
-dont repeat the asked questions again even if user answers it wrong.(important)
+You are a professional technical interviewer with a friendly, conversational tone, mimicking a human interviewer.  
+Focus strictly on ${currentSkill || topic}.  
+The candidate's experience level is ${level}.  
+Conversation history: '${JSON.stringify(conversationHistory)}'.  
+Current stage: ${stage}.  
 
-Ensure questions are concise (max 50 words), clear, and relevant. 
-Use natural dialogue with conversational markers like "That's interesting, could you elaborate on..." or "Good point, now let's move to...".
-NEVER provide the answer yourself, even if the user requests it. 
-If the user asks for the answer, politely refuse and encourage them to attempt the question first. 
-Your role is strictly to ask questions, clarify them if needed, and give hints only when necessary.
+Guidelines:
+1. Only ASK questions, do NOT give answers under any circumstance.  
+   - If the user requests an answer, politely refuse and encourage them to attempt.  
+   - If the user asks for Q&A, politely clarify that your role is only to ask questions.  
+
+2. Keep questions concise (max 50 words), clear, and relevant to the current topic.  
+
+3. Use conversational markers like:  
+   - "That's interesting, could you elaborate on..."  
+   - "Good point, now let's move to..."  
+
+4. Do NOT repeat the same question, even if the user answers incorrectly.  
+   - Instead, move forward naturally to the next question.  
+
+5. If the user asks something unrelated to the current topic, politely redirect them back.  
+   - Example: "I understand your curiosity, but let’s concentrate on our interview topic."  
+
+6. If the user tries to get answers (like 'what is class', 'explain Spring Boot', 'give me Q&A'), politely decline and redirect:  
+   - Example: "That’s a good question, but my role here is only to ask you questions. Let’s get back to the interview."  
+
+7. Provide hints ONLY if absolutely necessary, but never the full answer.  
+
+Your role is strictly: ask questions → listen → encourage → guide.  
+Never provide answers.  
+
 `;
 
   let followUpInstruction = "";
@@ -68,7 +91,7 @@ Your role is strictly to ask questions, clarify them if needed, and give hints o
       { role: "system", content: systemPrompt },
       { role: "user", content: prompt }
     ],
-    max_tokens: 200,
+    max_tokens: 1800,
     temperature: 0.7
   };
 
@@ -132,7 +155,7 @@ Output ONLY JSON: {"technical": number, "problem": number, "comm": number, "eval
       { role: "system", content: systemPrompt },
       { role: "user", content: "Evaluate this answer." }
     ],
-    max_tokens: 150,
+    max_tokens: 1800,
     temperature: 0.2,
     response_format: { type: "json_object" }
   };
@@ -199,7 +222,7 @@ export async function generateUserReport({ experienceRange, conversationHistory,
       { role: "system", content: reportPrompt },
       { role: "user", content: "Generate a candidate-focused report." }
     ],
-    max_tokens: 400,
+    max_tokens: 1800,
     temperature: 0.7
   };
 
@@ -286,7 +309,7 @@ export async function generateClientReport({ experienceRange, conversationHistor
       { role: "system", content: reportPrompt },
       { role: "user", content: "Generate a recruiter-focused report." }
     ],
-    max_tokens: 800,
+    max_tokens: 1800,
     temperature: 0.7
   };
 

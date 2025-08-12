@@ -4,11 +4,11 @@ export class InterviewOrchestrator {
     this.resumeSkills = resumeSkills.length > 0 ? resumeSkills : [topic];
     this.currentState = "greeting";
     this.backgroundQuestionsAsked = 0;
-    this.maxBackgroundQuestions = 3;
+    this.maxBackgroundQuestions = 4;
     this.knowledgeQuestionsAsked = 0;
-    this.maxKnowledgeQuestions = 3;
+    this.maxKnowledgeQuestions = 4;
     this.scenarioQuestionsAsked = 0;
-    this.maxScenarioQuestions = 3;
+    this.maxScenarioQuestions = 4;
     this.currentSkillIndex = 0;
     this.experienceLevel = null;
     this.backgroundResponses = [];

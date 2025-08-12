@@ -48,16 +48,16 @@ const InterviewSecurity = ({ onEndInterview }) => {
   };
 
   // ===== Force Fullscreen on Start =====
-  useEffect(() => {
-    const enterFullscreen = () => {
-      const elem = document.documentElement;
-      if (elem.requestFullscreen) elem.requestFullscreen();
-      else if (elem.mozRequestFullScreen) elem.mozRequestFullScreen();
-      else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
-      else if (elem.msRequestFullscreen) elem.msRequestFullscreen();
-    };
-    enterFullscreen();
-  }, []);
+  // useEffect(() => {
+  //   const enterFullscreen = () => {
+  //     const elem = document.documentElement;
+  //     if (elem.requestFullscreen) elem.requestFullscreen();
+  //     else if (elem.mozRequestFullScreen) elem.mozRequestFullScreen();
+  //     else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
+  //     else if (elem.msRequestFullscreen) elem.msRequestFullscreen();
+  //   };
+  //   enterFullscreen();
+  // }, []);
 
   // ===== Disable Copy, Cut, Paste, Right Click =====
   useEffect(() => {
@@ -88,69 +88,69 @@ const InterviewSecurity = ({ onEndInterview }) => {
   }, []);
 
   // ===== Tab Switch Detection =====
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        startCountdown("Tab switch");
-      } else {
-        stopCountdown();
-      }
-    };
+  // useEffect(() => {
+  //   const handleVisibilityChange = () => {
+  //     if (document.hidden) {
+  //       startCountdown("Tab switch");
+  //     } else {
+  //       stopCountdown();
+  //     }
+  //   };
 
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, []);
+  //   document.addEventListener("visibilitychange", handleVisibilityChange);
+  //   return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  // }, []);
 
   // ===== Blur Detection =====
-  useEffect(() => {
-    const handleBlur = () => {
-      startCountdown("Window focus lost");
-    };
-    const handleFocus = () => {
-      stopCountdown();
-    };
+  // useEffect(() => {
+  //   const handleBlur = () => {
+  //     startCountdown("Window focus lost");
+  //   };
+  //   const handleFocus = () => {
+  //     stopCountdown();
+  //   };
 
-    window.addEventListener("blur", handleBlur);
-    window.addEventListener("focus", handleFocus);
+  //   window.addEventListener("blur", handleBlur);
+  //   window.addEventListener("focus", handleFocus);
 
-    return () => {
-      window.removeEventListener("blur", handleBlur);
-      window.removeEventListener("focus", handleFocus);
-    };
-  }, []);
+  //   return () => {
+  //     window.removeEventListener("blur", handleBlur);
+  //     window.removeEventListener("focus", handleFocus);
+  //   };
+  // }, []);
 
   // ===== Fullscreen Enforcement =====
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      if (!document.fullscreenElement) {
-        startCountdown("Fullscreen exit");
-      }
-    };
+  // useEffect(() => {
+  //   const handleFullscreenChange = () => {
+  //     if (!document.fullscreenElement) {
+  //       startCountdown("Fullscreen exit");
+  //     }
+  //   };
 
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
-  }, []);
+  //   document.addEventListener("fullscreenchange", handleFullscreenChange);
+  //   return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  // }, []);
 
   // ===== DevTools Detection =====
-  useEffect(() => {
-    let devtoolsOpen = false;
-    const threshold = 160;
-    const checkDevTools = () => {
-      if (
-        window.outerWidth - window.innerWidth > threshold ||
-        window.outerHeight - window.innerHeight > threshold
-      ) {
-        if (!devtoolsOpen) {
-          devtoolsOpen = true;
-          startCountdown("Developer Tools opened");
-        }
-      } else {
-        devtoolsOpen = false;
-      }
-    };
-    const interval = setInterval(checkDevTools, 1000);
-    return () => clearInterval(interval);
-  }, []);
+  // useEffect(() => {
+  //   let devtoolsOpen = false;
+  //   const threshold = 160;
+  //   const checkDevTools = () => {
+  //     if (
+  //       window.outerWidth - window.innerWidth > threshold ||
+  //       window.outerHeight - window.innerHeight > threshold
+  //     ) {
+  //       if (!devtoolsOpen) {
+  //         devtoolsOpen = true;
+  //         startCountdown("Developer Tools opened");
+  //       }
+  //     } else {
+  //       devtoolsOpen = false;
+  //     }
+  //   };
+  //   const interval = setInterval(checkDevTools, 1000);
+  //   return () => clearInterval(interval);
+  // }, []);
 
   return (
     <>

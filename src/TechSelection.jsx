@@ -8,7 +8,14 @@ import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min?url";
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 const technologies = [
-"python","AWS","java","c","c++","javascript","Spring boot","Junit","React","Node.js","SQL"
+"Python",
+"Flutter",
+"HTML",
+"CSS",
+"Java Automation Testing ",
+"ReactJS",
+"Java",
+"JavaScript"
 ];
 
 export default function TechSelection() {

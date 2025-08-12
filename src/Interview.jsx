@@ -14,7 +14,7 @@ export default function Interview() {
   const INITIAL_AI_QUESTION = `Hello! I'm your AI interviewer specialized in ${resumeSkills.length > 0 ? resumeSkills.join(", ") : topic}. I'll be asking you questions to assess your background and skills. Let's start with your introduction — please tell me about your background and work with ${resumeSkills.length > 0 ? resumeSkills.join(", ") : topic}.`;
 
   const [experience, setExperience] = useState("");
-  const [durationMinutes, setDurationMinutes] = useState("");
+  const [durationMinutes, setDurationMinutes] = useState("15"); // Default to 15 minutes
   const [durationError, setDurationError] = useState("");
   const [conversation, setConversation] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -35,6 +35,8 @@ export default function Interview() {
   const orchestratorRef = useRef(null);
   const timerRef = useRef(null);
   const lastAIIndex = useRef(0);
+  const isWaitingForAnswer = useRef(false);
+  const currentQuestionText = useRef("");
   const navigate = useNavigate();
 
   const {
@@ -43,8 +45,6 @@ export default function Interview() {
     resetTranscript,
     browserSupportsSpeechRecognition,
   } = useSpeechRecognition();
-
-  const noResponseTimeout = useRef(null);
 
   const addProctoringLog = (log) => setProctoringLogs((prev) => [...prev, { timestamp: new Date().toISOString(), event: log }]);
 
@@ -65,6 +65,13 @@ export default function Interview() {
     }
     return () => clearInterval(timerRef.current);
   }, [interviewStarted, conversation]);
+
+  // Automatically end interview when timer exceeds duration
+  useEffect(() => {
+    if (interviewStarted && timer >= Number(durationMinutes) * 60) {
+      handleEndInterview();
+    }
+  }, [timer, interviewStarted, durationMinutes]);
 
   useEffect(() => {
     if (interviewStarted && !orchestratorRef.current) {
@@ -88,21 +95,14 @@ export default function Interview() {
     utter.lang = "en-US";
     if (selectedVoice) utter.voice = selectedVoice;
     utter.onend = () => {
-      setTimeout(() => {
-        if (!listening) {
-          resetTranscript();
-          setAnswer("");
-          SpeechRecognition.startListening({ continuous: true, language: "en-US" });
-          noResponseTimeout.current = setTimeout(() => {
-            if (transcript === "") {
-              SpeechRecognition.stopListening();
-              speak(text);
-            }
-          }, 10000);
-        }
-      }, 2000);
+      if (isWaitingForAnswer.current && !listening) {
+        resetTranscript();
+        setAnswer("");
+        SpeechRecognition.startListening({ continuous: true, language: "en-US" });
+      }
     };
     window.speechSynthesis.speak(utter);
+    isWaitingForAnswer.current = true;
   };
 
   const playDemoVoice = (voice) => {
@@ -121,6 +121,7 @@ export default function Interview() {
     const aiMessages = conversation.filter((msg) => msg.role === "ai");
     if (aiMessages.length > lastAIIndex.current) {
       const newAI = aiMessages[aiMessages.length - 1];
+      currentQuestionText.current = newAI.text;
       speak(newAI.text);
       lastAIIndex.current = aiMessages.length;
     }
@@ -128,10 +129,6 @@ export default function Interview() {
 
   useEffect(() => {
     setAnswer(transcript);
-    if (transcript.trim() !== "" && noResponseTimeout.current) {
-      clearTimeout(noResponseTimeout.current);
-      noResponseTimeout.current = null;
-    }
   }, [transcript]);
 
   const handleSend = async () => {
@@ -140,10 +137,7 @@ export default function Interview() {
     if (listening) {
       SpeechRecognition.stopListening();
     }
-    if (noResponseTimeout.current) {
-      clearTimeout(noResponseTimeout.current);
-      noResponseTimeout.current = null;
-    }
+    isWaitingForAnswer.current = false;
 
     const userAnswer = answer;
     const lastQuestion = conversation[conversation.length - 1];
@@ -162,11 +156,6 @@ export default function Interview() {
           stage: lastQuestion.stage
         });
         orchestratorRef.current.addAnswerScore(evaluation, evaluation.evaluation);
-      }
-
-      if (timer >= Number(durationMinutes) * 60) {
-        handleEndInterview();
-        return;
       }
 
       const followUpType = evaluation ? orchestratorRef.current.determineFollowUpType(evaluation) : null;
@@ -208,10 +197,7 @@ export default function Interview() {
     if (listening) {
       SpeechRecognition.stopListening();
     }
-    if (noResponseTimeout.current) {
-      clearTimeout(noResponseTimeout.current);
-      noResponseTimeout.current = null;
-    }
+    isWaitingForAnswer.current = false;
 
     const updatedConversation = [...conversation, { role: "user", text: "Skipped", type: "regular", stage: lastQuestion.stage }];
     setConversation(updatedConversation);
@@ -219,11 +205,6 @@ export default function Interview() {
     setErrorMessage("");
 
     try {
-      if (timer >= Number(durationMinutes) * 60) {
-        handleEndInterview();
-        return;
-      }
-
       const nextStage = orchestratorRef.current.decideNextState("Skipped");
       if (!nextStage) {
         setConversation([...updatedConversation, { role: "ai", text: "Thank you for the interview! Please generate your reports.", type: "regular", stage: "wrapup" }]);
@@ -256,6 +237,7 @@ export default function Interview() {
 
   const handleEndInterview = async () => {
     window.speechSynthesis.cancel();
+    isWaitingForAnswer.current = false;
     setLoading(true);
     setErrorMessage("");
 
@@ -549,7 +531,7 @@ export default function Interview() {
                   </li>
                   <li>Speak clearly into your microphone</li>
                   <li>
-                    Click <strong style={{ color: "#4fc3f7" }}>"Stop"</strong> when finished
+                    Click <strong style={{ color: "#4fc3f7" }}>"Stop and Send"</strong> when finished to submit your answer
                   </li>
                 </ul>
               </li>
@@ -568,10 +550,11 @@ export default function Interview() {
               </li>
               <li style={{ marginBottom: "10px" }}>
                 Click <strong style={{ color: "#4fc3f7" }}>"🔊 Read Last Question"</strong> to hear
-                the last question again.
+                the last question again at any time.
               </li>
               <li style={{ marginBottom: "10px" }}>
-                Click <strong style={{ color: "#4fc3f7" }}>"End Interview"</strong> to conclude early.
+                The interview will end automatically after {durationMinutes} minutes, or click{" "}
+                <strong style={{ color: "#4fc3f7" }}>"End Interview"</strong> to conclude early.
               </li>
               <li style={{ marginBottom: "10px" }}>
                 This interview uses your webcam for AI proctoring to detect malpractices like looking away. Please grant camera permission and keep your face visible.
@@ -615,7 +598,7 @@ export default function Interview() {
 
             <div style={{ margin: "20px 0" }}>
               <label style={{ display: "block", marginBottom: "8px", color: "#a0a0a0" }}>
-                Enter interview duration (minutes):
+                Interview duration (minutes):
               </label>
               <input
                 type="number"
@@ -992,6 +975,7 @@ export default function Interview() {
             </button>
             <button
               onClick={() => {
+                window.speechSynthesis.cancel();
                 resetTranscript();
                 setAnswer("");
                 SpeechRecognition.startListening({ continuous: true, language: "en-US" });
@@ -1019,7 +1003,10 @@ export default function Interview() {
               Send Answer
             </button>
             <button
-              onClick={() => speak(conversation[conversation.length - 1]?.text)}
+              onClick={() => {
+                window.speechSynthesis.cancel();
+                speak(conversation[conversation.length - 1]?.text);
+              }}
               disabled={loading || !interviewStarted || conversation.length === 0}
               style={buttonStyle}
             >
