@@ -9,6 +9,8 @@ import logo from "./assets/zeero-ai.png";
 import Editor from '@monaco-editor/react';
 import InterviewSecurity from "./InterviewSecurity"; // New component import
 // import EyeProctoring from "./EyeProctoring"; // NEW: Import EyeProctoring
+import {  useNavigate } from "react-router-dom";
+
 
 export default function Interview() {
   const location = useLocation();
@@ -37,6 +39,7 @@ export default function Interview() {
   const timerRef = useRef(null);
   const lastAIIndex = useRef(0);
   const [proctoringLogs, setProctoringLogs] = useState([]); // NEW: State for proctoring logs
+  const navigate = useNavigate();
 
   // Speech-to-text hooks
   const {
@@ -211,11 +214,16 @@ export default function Interview() {
   const handleSend = async () => {
     if (!answer.trim() && !mcqSelection) return;
 
+    const lastQuestion = conversation[conversation.length - 1];
+    if (lastQuestion.type === "coding") {
+      console.log("Coding question detected, ignoring handleSend");
+      return; // Prevent handleSend for coding questions
+    }
+
     if (listening) {
       SpeechRecognition.stopListening();
     }
 
-    const lastQuestion = conversation[conversation.length - 1];
     const isMcq = lastQuestion.type === "mcq";
     const userAnswer = isMcq ? (mcqSelection || "Skipped") : answer;
 
@@ -368,12 +376,88 @@ export default function Interview() {
   };
 
   // Handle ending the interview
-  const handleEndInterview = async () => {
-    setLoading(true);
-    setConversation([...conversation, { role: "ai", text: "Thank you for the interview! Please generate your reports.", type: "regular", stage: "wrapup" }]);
+const handleEndInterview = async () => {
+  setLoading(true);
+  
+  // Add wrapup message to conversation
+  const updatedConversation = [...conversation, { 
+    role: "ai", 
+    text: "Thank you for the interview! Generating your reports...", 
+    type: "regular", 
+    stage: "wrapup" 
+  }];
+  setConversation(updatedConversation);
+  
+  try {
+    // Generate both reports
+    const [userReportText, clientReportText] = await Promise.all([
+      generateUserReport({
+        experienceRange: orchestratorRef.current?.experienceLevel || "0-2",
+        conversationHistory: updatedConversation.filter((msg, idx) => idx > 0),
+        topic,
+        resumeSkills,
+        proctoringLogs
+      }),
+      generateClientReport({
+        experienceRange: orchestratorRef.current?.experienceLevel || "0-2",
+        conversationHistory: updatedConversation.filter((msg, idx) => idx > 0),
+        topic,
+        resumeSkills,
+        proctoringLogs
+      })
+    ]);
+    
+    // Set reports in state (optional, if you want to show them)
+    setUserReport(userReportText);
+    setClientReport(clientReportText);
+    
+    // Create PDFs and download them
+    const downloadReport = (reportText, type) => {
+      const doc = new jsPDF();
+      doc.setFontSize(20);
+      doc.setTextColor(44, 62, 80);
+      doc.text(
+        `${type === 'user' ? 'Candidate Feedback' : 'Recruiter'} Report: ${resumeSkills.length > 0 ? resumeSkills.join(", ") : topic}`, 
+        105, 20, { align: "center" }
+      );
+      doc.setFontSize(10);
+      doc.setTextColor(149, 165, 166);
+      doc.text(`Generated on ${new Date().toLocaleString()}`, 105, 28, { align: "center" });
+      doc.setFontSize(12);
+      doc.text(`Experience Level: ${getExperienceLabel(orchestratorRef.current?.experienceLevel || "0-2")}`, 15, 40);
+      if (resumeSkills.length > 0) {
+        doc.text(`Resume Skills: ${resumeSkills.join(", ")}`, 15, 48);
+      }
+      doc.text(`Interview Duration: ${formatTimer(timer)}`, 15, resumeSkills.length > 0 ? 56 : 48);
+      doc.setFontSize(12);
+      doc.setTextColor(33, 37, 41);
+      const splitText = doc.splitTextToSize(reportText.replace(/## /g, "\n").replace(/# /g, "\n\n"), 180);
+      doc.text(splitText, 15, resumeSkills.length > 0 ? 64 : 56);
+      doc.setFontSize(10);
+      doc.setTextColor(149, 165, 166);
+      doc.text(`AI Interviewer ${type === 'user' ? 'Candidate' : 'Recruiter'} Report`, 105, 285, { align: "center" });
+      doc.save(`${type}-report-${topic}-${new Date().toISOString().slice(0, 10)}.pdf`);
+    };
+    
+    downloadReport(userReportText, 'user');
+    downloadReport(clientReportText, 'client');
+    
+    // Navigate to home after a short delay to let downloads complete
+    setTimeout(() => {
+      navigate("/");
+    }, 2000);
+    
+  } catch (err) {
+    console.error("Error generating reports:", err);
+    // Still navigate to home even if reports fail
+    setTimeout(() => {
+      navigate("/");
+    }, 1000);
+  } finally {
     setLoading(false);
     clearInterval(timerRef.current);
-  };
+  }
+};
 
   // Auto-stop listening after 10s of no speech change
   useEffect(() => {
@@ -1036,6 +1120,27 @@ export default function Interview() {
               gap: "10px",
             }}
           >
+      <button 
+  onClick={() => window.location.href = "/"} 
+  style={{
+    backgroundColor: "#4CAF50",
+    color: "white",
+    padding: "10px 20px",
+    border: "none",
+    borderRadius: "8px",
+    cursor: "pointer",
+    fontSize: "16px",
+    fontWeight: "bold",
+    boxShadow: "0 4px 6px rgba(0, 0, 0, 0.2)",
+    transition: "background-color 0.3s ease"
+  }}
+  onMouseOver={(e) => e.target.style.backgroundColor = "#45a049"}
+  onMouseOut={(e) => e.target.style.backgroundColor = "#4CAF50"}
+>
+  Go Home
+</button>
+
+
             <button
               onClick={() => {
                 resetTranscript();
@@ -1082,13 +1187,13 @@ export default function Interview() {
             >
               🔊 Read Last Question
             </button>
-            <button
-              onClick={handleEndInterview}
-              disabled={loading || !interviewStarted || conversation[conversation.length - 1]?.stage === "wrapup"}
-              style={{ ...buttonStyle, backgroundColor: "#e53935" }}
-            >
-              End Interview
-            </button>
+          <button
+  onClick={handleEndInterview}
+  disabled={loading || !interviewStarted || conversation[conversation.length - 1]?.stage === "wrapup"}
+  style={{ ...buttonStyle, backgroundColor: "#e53935" }}
+>
+  {loading ? "Generating Reports..." : "End Interview"}
+</button>
             <button
               onClick={handleGenerateUserReport}
               disabled={

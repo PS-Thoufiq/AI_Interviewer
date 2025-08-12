@@ -1,3 +1,4 @@
+
 const AZURE_API_KEY = "27bf9a2345b0467cb0017d028c687ff0";
 const AZURE_API_URL = "https://zeero.openai.azure.com/openai/deployments/zeero-prod/chat/completions?api-version=2025-01-01-preview";
 

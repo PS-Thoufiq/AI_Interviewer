@@ -1,3 +1,4 @@
+
 export class InterviewOrchestrator {
   constructor(topic, resumeSkills = []) {
     this.topic = topic;
@@ -12,19 +13,26 @@ export class InterviewOrchestrator {
     this.currentSkillIndex = 0;
     this.answeredWellCount = 0;
     this.totalAnswers = 0;
-    this.experienceLevel = null; // Determined after background questions
+    this.experienceLevel = null;
     this.backgroundResponses = [];
-    // List of non-coding-related topics
     this.nonCodingTopics = [
-      "project management",
-      "business analysis",
-      "data analysis",
-      "product management",
-      "ux/ui design",
-      "marketing",
-      "human resources",
-      "finance",
-      "operations"
+      "aws",
+      "devops",
+      "docker",
+      "machine learning",
+      "data science",
+      "cybersecurity",
+      "internet of things (iot)",
+      "ar/vr development",
+      "game development",
+      "agile methodologies",
+      "microservices architecture",
+      "cloud computing",
+      "big data technologies",
+      "ui/ux design",
+      "cross-platform development",
+      "serverless architecture",
+      "progressive web apps (pwas)"
     ];
   }
 
@@ -51,13 +59,15 @@ export class InterviewOrchestrator {
   }
 
   isNonCodingTopic() {
-    // Check if topic or any resume skill is in nonCodingTopics (case-insensitive)
-    const topicLower = this.topic.toLowerCase();
-    const skillsLower = this.resumeSkills.map(skill => skill.toLowerCase());
-    return this.nonCodingTopics.some(nonCodingTopic => 
-      topicLower.includes(nonCodingTopic) || 
-      skillsLower.some(skill => skill.includes(nonCodingTopic))
-    );
+    const topicLower = this.topic.toLowerCase().trim();
+    const skillsLower = this.resumeSkills.map(skill => skill.toLowerCase().trim());
+    
+    // Check if topic or any resume skill matches a non-coding topic
+    return this.nonCodingTopics.some(nonCodingTopic => {
+      const nonCodingTopicLower = nonCodingTopic.toLowerCase();
+      return topicLower === nonCodingTopicLower || 
+             skillsLower.some(skill => skill === nonCodingTopicLower);
+    });
   }
 
   decideNextState(lastResponse, conversationHistory) {
@@ -80,10 +90,9 @@ export class InterviewOrchestrator {
         this.backgroundQuestionsAsked++;
         this.currentSkillIndex++;
         if (this.backgroundQuestionsAsked < this.maxBackgroundQuestions) {
-          this.currentState = "background"; // Keep asking background
+          this.currentState = "background";
           return "background";
         }
-        // After all background questions
         this.experienceLevel = this.determineExperienceLevel();
         this.currentState = "mcq";
         return "mcq";
@@ -91,22 +100,22 @@ export class InterviewOrchestrator {
       case "mcq":
         this.mcqQuestionsAsked++;
         if (this.mcqQuestionsAsked < this.maxMcqQuestions) {
-          this.currentState = "mcq"; // Keep asking MCQs
+          this.currentState = "mcq";
           return "mcq";
         }
-        // For non-coding topics, skip coding stage
+        // Skip coding stage for non-coding topics
         if (this.isNonCodingTopic()) {
+          console.log("Non-coding topic detected, skipping coding stage");
           this.currentState = "wrapup";
           return "wrapup";
         }
-        // For coding topics, proceed to coding stage
         this.currentState = "coding";
         return "coding";
 
       case "coding":
         this.codingQuestionsAsked++;
         if (this.codingQuestionsAsked < this.maxCodingQuestions) {
-          this.currentState = "coding"; // Keep asking coding questions
+          this.currentState = "coding";
           return "coding";
         }
         this.currentState = "wrapup";
@@ -151,7 +160,7 @@ export class InterviewOrchestrator {
         return "# Your code here\n";
       case "php":
       case "laravel":
-        return "<?php\n// Your code here\n?> \n";
+        return "<?php\n// Your code here\n?>\n";
       case "go":
         return "package main\nimport \"fmt\"\nfunc main() {\n    // Your code here\n}\n";
       case "django":

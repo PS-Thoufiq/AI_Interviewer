@@ -7,7 +7,7 @@ import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min?url";
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 const technologies = [
-  "Service Now", "Java Spring Boot", "Python", "Node.js Express", "React.js", "Angular",
+  "Java Spring Boot", "Python", "Node.js Express", "React.js", "Angular",
   "AWS", "Docker", "Kubernetes", "SQL Databases", "GraphQL",
   "Frontend Development", "Backend Development", "Full Stack Development", "DevOps",
   "Machine Learning", "Data Science", "Mobile Development", "Cybersecurity",
