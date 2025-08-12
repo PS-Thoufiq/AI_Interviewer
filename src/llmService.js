@@ -1,20 +1,19 @@
-// llmService.js (updated)
 const AZURE_API_KEY = "27bf9a2345b0467cb0017d028c687ff0";
 const AZURE_API_URL = "https://zeero.openai.azure.com/openai/deployments/zeero-prod/chat/completions?api-version=2025-01-01-preview";
 
 export async function getNextQuestion({ prompt, experienceRange, conversationHistory, topic, stage, resumeSkills = [], followUpType = null }) {
   const EXPERIENCE_LEVELS = {
-    "0-2": "Beginner",
+    "0- prolong": "Beginner",
     "2-4": "Intermediate",
     "4-6": "Advanced"
   };
   const level = EXPERIENCE_LEVELS[experienceRange] || "Beginner";
   const currentSkill = resumeSkills.length > 0
-    ? resumeSkills[conversationHistory.filter(msg => msg.stage === "knowledge" || msg.stage === "scenario" || msg.stage === "problem").length % resumeSkills.length]
+    ? resumeSkills[conversationHistory.filter(msg => msg.stage === "knowledge" || msg.stage === "scenario").length % resumeSkills.length]
     : topic;
 
   const systemPromptBase = `
-You are a professional technical interviewer with a friendly, conversational tone, mimicking a human interviewer. Focus on ${currentSkill || topic}. The candidate's experience level is ${level}. Their last input: '${prompt}'. Conversation history: '${JSON.stringify(conversationHistory)}'. Current stage: ${stage}.
+You are a professional technical interviewer with a friendly, conversational tone, mimicking a human interviewer. Focus on ${currentSkill || topic}. The candidate's experience level is ${level}. Their.panels Their last input: '${prompt}'. Conversation history: '${JSON.stringify(conversationHistory)}'. Current stage: ${stage}.
 dont repeat the asked questions again even if user answers it wrong.(important)
 
 Ensure questions are concise (max 50 words), clear, and relevant. 
@@ -39,9 +38,14 @@ Your role is strictly to ask questions, clarify them if needed, and give hints o
 
   let systemPrompt = systemPromptBase + followUpInstruction + "\n";
 
-  if (stage === "background") {
+  if (stage === "greeting") {
     systemPrompt += `
-      For the background stage, ask ONLY behavioral/soft skills questions about candidate's projects, skills, experience, and conflicts resolved. E.g., "Tell me about a time you resolved a conflict in a team." Do NOT ask technical questions.
+
+      For the greeting stage, ask a friendly introductory question to set a positive tone, like "Tell me a bit about yourself and your background."
+    `;
+  } else if (stage === "background") {
+    systemPrompt += `
+      For thesuch as background stage, ask ONLY behavioral/soft skills questions about candidate's projects, skills, experience, and conflicts resolved. E.g., "Tell me about a time you resolved a conflict in a team." Do NOT ask technical questions.
     `;
   } else if (stage === "knowledge") {
     systemPrompt += `
@@ -51,29 +55,9 @@ Your role is strictly to ask questions, clarify them if needed, and give hints o
     systemPrompt += `
       For the scenario stage, ask scenario-based questions related to ${currentSkill || topic}. E.g., "Your API response times are slow in production. How do you debug this?"
     `;
-  // } else if (stage === "problem") {
-  //   systemPrompt += `
-  //     For the problem stage, ask problem-solving questions for ${currentSkill || topic}. 
-  //     If the topic requires coding, provide a coding problem with a clear description and boilerplate code.
-  //     Format for coding: 
-  //     Solve this problem: [Problem description]
-  //     Boilerplate Code:
-  //     \`\`\`[language]
-  //     [Boilerplate code]
-  //     \`\`\`
-  //     Example:
-  //     Solve this problem: Write a function to reverse a string in ${currentSkill || topic}.
-  //     Boilerplate Code:
-  //     \`\`\`python
-  //     def reverse_string(s):
-  //         # Your code here
-  //         pass
-  //     \`\`\`
-  //     Otherwise, ask non-coding problem-solving like "How would you design a URL shortener?"
-  //   `;
-  // } else if (stage === "wrapup") {
+  } else if (stage === "wrapup") {
     systemPrompt += `
-      For the wrapup stage, ask any final summary or feedback questions.
+      For the wrapup stage, ask final summary or feedback questions, like "What did you learn from this interview process?"
     `;
   } else {
     systemPrompt += systemPromptBase;
@@ -121,9 +105,9 @@ communication_clarity: 0=unclear incoherent, 1=understandable fragmented, 2=clea
 Provide a short evaluation text (1-2 sentences).
 `;
 
-  if (stage === "background") {
+  if (stage === "greeting" || stage === "background") {
     systemPrompt += `
-Since this is a behavioral question, set technical_correctness and problem_solving_depth to 0, only score communication_clarity.
+Since this is a greeting or behavioral question, set technical_correctness and problem_solving_depth to 0, only score communication_clarity.
 `;
   } else if (stage === "knowledge") {
     systemPrompt += `
@@ -133,9 +117,9 @@ Focus more on technical_correctness and communication_clarity.
     systemPrompt += `
 Focus on problem_solving_depth and communication_clarity.
 `;
-  } else if (stage === "problem") {
+  } else if (stage === "wrapup") {
     systemPrompt += `
-Focus on all dimensions, especially if coding involved.
+Focus on communication_clarity and overall engagement.
 `;
   }
 
@@ -186,7 +170,7 @@ export async function generateUserReport({ experienceRange, conversationHistory,
   const { avgTech, avgProblem, avgComm, finalScore } = averages || {};
 
   const reportPrompt = `
-    You are an expert technical interviewer for ${topic}. Based on the interview conversation (stages: greeting, background, knowledge, scenario, problem, wrapup), provide a candidate-focused report. Analyze responses for depth, clarity, and engagement, noting skipped questions.
+    You are an expert technical interviewer for ${topic}. Based on the interview conversation (stages: greeting, background, knowledge, scenario, wrapup), provide a candidate-focused report. Analyze responses for depth, clarity, and engagement, noting skipped questions.
 
     Candidate's level: ${level}.
     Conversation: ${JSON.stringify(conversationHistory)}.
@@ -246,13 +230,13 @@ export async function generateClientReport({ experienceRange, conversationHistor
   const { avgTech, avgProblem, avgComm, finalScore } = averages || {};
 
   const reportPrompt = `
-    You are an expert technical interviewer for ${topic}. Based on the interview conversation (stages: greeting, background, knowledge, scenario, problem, wrapup), provide a recruiter-focused report. Analyze responses for depth, accuracy, and clarity, noting skipped questions and resume skill coverage.
+    You are an expert technical interviewer for ${topic}. Based on the interview conversation (stages: greeting, background, knowledge, scenario, wrapup), provide a recruiter-focused report. Analyze responses for depth, accuracy, and clarity, noting skipped questions and resume skill coverage.
 
     Candidate's level: ${level}.
     Conversation: ${JSON.stringify(conversationHistory)}.
     Resume skills: ${resumeSkills.join(", ") || "None"}.
     Average scores (0-3): technical ${avgTech?.toFixed(2) || 'N/A'}, problem-solving ${avgProblem?.toFixed(2) || 'N/A'}, communication ${avgComm?.toFixed(2) || 'N/A'}, overall weighted (50% tech, 30% problem, 20% comm): ${finalScore?.toFixed(2) || 'N/A'}.
-
+    if user asks ai to answer which is mostly out of context of ai asked question then for the question dont consider it as a valid answer and skip it.
     Format in markdown:
     # Recruiter Report for ${topic}
     ## Candidate Overview
@@ -284,10 +268,11 @@ export async function generateClientReport({ experienceRange, conversationHistor
     - Depth: N/5
 
     ## Stage Analysis
+    - Greeting: [Analysis]
     - Background: [Analysis]
     - Knowledge: [Analysis]
     - Scenario: [Analysis]
-    - Problem: [Analysis]
+    - Wrapup: [Analysis]
 
     ## Overall Score
     - NN/100

@@ -31,10 +31,10 @@ export default function Interview() {
   const [availableVoices, setAvailableVoices] = useState([]);
   const [selectedVoice, setSelectedVoice] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
+  const [proctoringLogs, setProctoringLogs] = useState([]);
   const orchestratorRef = useRef(null);
   const timerRef = useRef(null);
   const lastAIIndex = useRef(0);
-  const [proctoringLogs, setProctoringLogs] = useState([]);
   const navigate = useNavigate();
 
   const {
@@ -171,8 +171,7 @@ export default function Interview() {
 
       const followUpType = evaluation ? orchestratorRef.current.determineFollowUpType(evaluation) : null;
 
-      const nextStage = orchestratorRef.current.decideNextState(userAnswer, updatedConversation);
-      console.log("Next stage:", nextStage);
+      const nextStage = orchestratorRef.current.decideNextState(userAnswer);
       if (!nextStage) {
         setConversation([...updatedConversation, { role: "ai", text: "Thank you for the interview! Please generate your reports.", type: "regular", stage: "wrapup" }]);
         setLoading(false);
@@ -225,8 +224,7 @@ export default function Interview() {
         return;
       }
 
-      const nextStage = orchestratorRef.current.decideNextState("Skipped", updatedConversation);
-      console.log("Next stage after skip:", nextStage);
+      const nextStage = orchestratorRef.current.decideNextState("Skipped");
       if (!nextStage) {
         setConversation([...updatedConversation, { role: "ai", text: "Thank you for the interview! Please generate your reports.", type: "regular", stage: "wrapup" }]);
         setLoading(false);
@@ -257,7 +255,7 @@ export default function Interview() {
   };
 
   const handleEndInterview = async () => {
-    window.speechSynthesis.cancel(); // Stop any ongoing speech
+    window.speechSynthesis.cancel();
     setLoading(true);
     setErrorMessage("");
 
@@ -497,8 +495,6 @@ export default function Interview() {
     e.target.src = "https://via.placeholder.com/40?text=AI";
   };
 
-  const conversationHistory = conversation.filter((msg, idx) => idx > 0);
-
   if (!browserSupportsSpeechRecognition) {
     return <div style={{ color: "#fff" }}>Your browser does not support speech recognition.</div>;
   }
@@ -577,7 +573,9 @@ export default function Interview() {
               <li style={{ marginBottom: "10px" }}>
                 Click <strong style={{ color: "#4fc3f7" }}>"End Interview"</strong> to conclude early.
               </li>
-              <li style={{ marginBottom: "10px" }}>This interview uses your webcam for AI proctoring to detect malpractices like looking away. Please grant camera permission and keep your face visible.</li>
+              <li style={{ marginBottom: "10px" }}>
+                This interview uses your webcam for AI proctoring to detect malpractices like looking away. Please grant camera permission and keep your face visible.
+              </li>
               <li>
                 Generate two reports: one for your feedback and one for recruiters.
               </li>
@@ -585,7 +583,7 @@ export default function Interview() {
 
             <div style={{ margin: "20px 0" }}>
               <label style={{ display: "block", marginBottom: "8px", color: "#a0a0a0" }}>
-                Select your experience level (used as fallback):
+                Select your experience level:
               </label>
               <select
                 value={experience}
@@ -974,13 +972,13 @@ export default function Interview() {
           >
             <button
               onClick={() => {
-                window.speechSynthesis.cancel(); // Stop speech before navigating
+                window.speechSynthesis.cancel();
                 navigate("/");
               }}
               style={{
+                padding: "10px 20px",
                 backgroundColor: "#4CAF50",
                 color: "white",
-                padding: "10px 20px",
                 border: "none",
                 borderRadius: "8px",
                 cursor: "pointer",
@@ -989,8 +987,6 @@ export default function Interview() {
                 boxShadow: "0 4px 6px rgba(0, 0, 0, 0.2)",
                 transition: "background-color 0.3s ease"
               }}
-              onMouseOver={(e) => e.target.style.backgroundColor = "#45a049"}
-              onMouseOut={(e) => e.target.style.backgroundColor = "#4CAF50"}
             >
               Go Home
             </button>
@@ -1010,7 +1006,7 @@ export default function Interview() {
                 SpeechRecognition.stopListening();
                 handleSend();
               }}
-              disabled={!listening || loading}
+              disabled={listening ? false : !answer.trim() || loading || !interviewStarted}
               style={buttonStyle}
             >
               Stop and Send
@@ -1038,14 +1034,14 @@ export default function Interview() {
             </button>
             <button
               onClick={handleGenerateUserReport}
-              disabled={reportLoading || loading || conversationHistory.length === 0 || !interviewStarted}
+              disabled={reportLoading || loading || conversation.length <= 1 || !interviewStarted}
               style={{ ...buttonStyle, backgroundColor: "#43a047" }}
             >
               {reportLoading ? "Generating..." : "Generate User Report"}
             </button>
             <button
               onClick={handleGenerateClientReport}
-              disabled={reportLoading || loading || conversationHistory.length === 0 || !interviewStarted}
+              disabled={reportLoading || loading || conversation.length <= 1 || !interviewStarted}
               style={{ ...buttonStyle, backgroundColor: "#43a047" }}
             >
               {reportLoading ? "Generating..." : "Generate Client Report"}
@@ -1267,6 +1263,8 @@ export default function Interview() {
         </div>
       )}
 
+      <InterviewSecurity addProctoringLog={addProctoringLog} />
+
       <style>
         {`
           @keyframes pulse {
@@ -1296,9 +1294,12 @@ export default function Interview() {
             font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
               monospace;
           }
+          button:hover:not(:disabled) {
+            background-color: #4fc3f7;
+            color: #1a1a1a;
+          }
         `}
       </style>
-      {/* <InterviewSecurity addProctoringLog={addProctoringLog} /> */}
     </div>
   );
 }
