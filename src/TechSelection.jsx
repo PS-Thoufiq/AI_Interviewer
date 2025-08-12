@@ -7,17 +7,7 @@ import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min?url";
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 const technologies = [
-  "Java Spring Boot", "Python", "Node.js Express", "React.js", "Angular",
-  "AWS", "Docker", "Kubernetes", "SQL Databases", "GraphQL",
-  "Frontend Development", "Backend Development", "Full Stack Development", "DevOps",
-  "Machine Learning", "Data Science", "Mobile Development", "Cybersecurity",
-  "Blockchain", "Internet of Things (IoT)", "AR/VR Development", "Game Development",
-  "API Development", "Software Testing", "Agile Methodologies", "Microservices Architecture",
-  "Cloud Computing", "Big Data Technologies", "UI/UX Design", "Cross-Platform Development",
-  "Serverless Architecture", "Progressive Web Apps (PWAs)", "Graph Databases", "NoSQL Databases",
-  "WebAssembly", "TypeScript", "Rust", "Go", "Ruby on Rails", "PHP", "C# .NET", "Swift", "Kotlin",
-  "Flutter", "React Native", "Vue.js", "Svelte", "ASP.NET Core", "Laravel", "Django", "FastAPI",
-  "Spring Cloud", "Apache Kafka", "Redis","Java Script","HTML","CSS","Bootstrap","RESTful API","Node.js","Express","MongoDB"
+"python","AWS","java","c","c++","javascript"
 ];
 
 export default function TechSelection() {

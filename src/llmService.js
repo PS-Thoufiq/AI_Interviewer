@@ -1,4 +1,3 @@
-
 const AZURE_API_KEY = "27bf9a2345b0467cb0017d028c687ff0";
 const AZURE_API_URL = "https://zeero.openai.azure.com/openai/deployments/zeero-prod/chat/completions?api-version=2025-01-01-preview";
 
@@ -86,7 +85,8 @@ export async function getNextQuestion({ prompt, experienceRange, conversationHis
 
   const data = await response.json();
   const content = data?.choices?.[0]?.message?.content || "";
-  console.log("API response for next question:", content); // Debug
+  console.log("Raw API response for next question:", JSON.stringify(data, null, 2));
+  console.log("Parsed content for next question:", content);
   return content;
 }
 
