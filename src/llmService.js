@@ -13,10 +13,13 @@ export async function getNextQuestion({ prompt, experienceRange, conversationHis
     : topic;
 
   const systemPromptBase = `
-    You are a professional technical interviewer with a friendly, conversational tone, mimicking a human interviewer. Focus on ${currentSkill || topic}. The candidate's experience level is ${level}. Their last input: '${prompt}'. Conversation history: '${JSON.stringify(conversationHistory)}'. Current stage: ${stage}.
+You are a professional technical interviewer with a friendly, conversational tone, mimicking a human interviewer. Focus on ${currentSkill || topic}. The candidate's experience level is ${level}. Their last input: '${prompt}'. Conversation history: '${JSON.stringify(conversationHistory)}'. Current stage: ${stage}.
 
-    Ensure questions are concise (max 50 words), clear, and relevant.
-  `;
+Ensure questions are concise (max 50 words), clear, and relevant. 
+NEVER provide the answer yourself, even if the user requests it. 
+If the user asks for the answer, politely refuse and encourage them to attempt the question first. 
+Your role is strictly to ask questions, clarify them if needed, and give hints only when necessary.
+`;
 
   let systemPrompt = "";
 
