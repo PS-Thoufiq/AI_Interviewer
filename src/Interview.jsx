@@ -45,6 +45,8 @@ export default function Interview() {
     browserSupportsSpeechRecognition,
   } = useSpeechRecognition();
 
+  const noResponseTimeout = useRef(null);
+
   const addProctoringLog = (log) => setProctoringLogs((prev) => [...prev, log]);
 
   useEffect(() => {
@@ -100,6 +102,7 @@ export default function Interview() {
       console.warn("Text-to-speech not supported in this browser.");
       return;
     }
+    window.speechSynthesis.cancel(); // Cancel any ongoing speech
     let speechText;
     if (questionType === "mcq") {
       speechText = "Answer this MCQ question";
@@ -118,8 +121,15 @@ export default function Interview() {
             resetTranscript();
             setAnswer("");
             SpeechRecognition.startListening({ continuous: true, language: "en-US" });
+            // Set timeout to re-read if no response after 10 seconds
+            noResponseTimeout.current = setTimeout(() => {
+              if (transcript === "") {
+                SpeechRecognition.stopListening();
+                speak(text, questionType); // Re-speak the question
+              }
+            }, 10000);
           }
-        }, 5000);
+        }, 2000);
       };
     }
     window.speechSynthesis.speak(utter);
@@ -148,6 +158,10 @@ export default function Interview() {
 
   useEffect(() => {
     setAnswer(transcript);
+    if (transcript.trim() !== "" && noResponseTimeout.current) {
+      clearTimeout(noResponseTimeout.current);
+      noResponseTimeout.current = null;
+    }
   }, [transcript]);
 
   const parseQuestionType = (text) => {
@@ -201,6 +215,10 @@ export default function Interview() {
 
     if (listening) {
       SpeechRecognition.stopListening();
+    }
+    if (noResponseTimeout.current) {
+      clearTimeout(noResponseTimeout.current);
+      noResponseTimeout.current = null;
     }
 
     const isMcq = lastQuestion.type === "mcq";
@@ -313,6 +331,14 @@ export default function Interview() {
   const handleSkip = async () => {
     const lastQuestion = conversation[conversation.length - 1];
     if (lastQuestion.type === "mcq") return;
+
+    if (listening) {
+      SpeechRecognition.stopListening();
+    }
+    if (noResponseTimeout.current) {
+      clearTimeout(noResponseTimeout.current);
+      noResponseTimeout.current = null;
+    }
 
     const updatedConversation = [...conversation, { role: "user", text: "Skipped", type: lastQuestion.type, stage: lastQuestion.stage }];
     setConversation(updatedConversation);
@@ -940,7 +966,7 @@ export default function Interview() {
             conversation[conversation.length - 1].role === "ai" &&
             conversation[conversation.length - 1].type === "mcq" ? (
               <div>
-                {[...parseMcqOptions(conversation[conversation.length - 1].text).options, "Skip"].map(
+                {[parseMcqOptions(conversation[conversation.length - 1].text).options, "Skip"].map(
                   (option, i) => (
                     <label
                       key={i}
