@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { getNextQuestion, generateUserReport, generateClientReport } from "./llmService";
+import { getNextQuestion, generateUserReport, generateClientReport, evaluateAnswer } from "./llmService";
 import { InterviewOrchestrator } from "./orchestrator";
 import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition";
 import { jsPDF } from "jspdf";
 import ReactMarkdown from "react-markdown";
 import logo from "./assets/zeero-ai.png";
-import Editor from '@monaco-editor/react';
 import InterviewSecurity from "./InterviewSecurity";
 
 export default function Interview() {
@@ -15,6 +14,8 @@ export default function Interview() {
   const INITIAL_AI_QUESTION = `Hello! I'm your AI interviewer specialized in ${resumeSkills.length > 0 ? resumeSkills.join(", ") : topic}. I'll be asking you questions to assess your background and skills. Let's start with your introduction — please tell me about your background and work with ${resumeSkills.length > 0 ? resumeSkills.join(", ") : topic}.`;
 
   const [experience, setExperience] = useState("");
+  const [durationMinutes, setDurationMinutes] = useState("");
+  const [durationError, setDurationError] = useState("");
   const [conversation, setConversation] = useState([]);
   const [loading, setLoading] = useState(false);
   const [answer, setAnswer] = useState("");
@@ -26,12 +27,9 @@ export default function Interview() {
   const [showInstructions, setShowInstructions] = useState(true);
   const [interviewStarted, setInterviewStarted] = useState(false);
   const [experienceError, setExperienceError] = useState("");
-  const [mcqSelection, setMcqSelection] = useState(null);
   const [timer, setTimer] = useState(0);
   const [availableVoices, setAvailableVoices] = useState([]);
   const [selectedVoice, setSelectedVoice] = useState(null);
-  const [showCodingPopup, setShowCodingPopup] = useState(false);
-  const [codingAnswer, setCodingAnswer] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const orchestratorRef = useRef(null);
   const timerRef = useRef(null);
@@ -80,51 +78,30 @@ export default function Interview() {
     }
   }, [interviewStarted, conversation.length]);
 
-  useEffect(() => {
-    if (conversation.length > 0) {
-      const lastMsg = conversation[conversation.length - 1];
-      console.log("Last message:", lastMsg);
-      if (lastMsg.role === "ai" && lastMsg.type === "coding") {
-        console.log("Showing coding popup for question:", lastMsg.text);
-        setShowCodingPopup(true);
-        const { boilerplate } = parseCodingQuestion(lastMsg.text);
-        console.log("Setting boilerplate in editor:", boilerplate);
-        setCodingAnswer(boilerplate || "");
-      } else {
-        console.log("Hiding coding popup");
-        setShowCodingPopup(false);
-        setCodingAnswer("");
-      }
-    }
-  }, [conversation]);
-
-  const speak = (text, questionType) => {
+  const speak = (text) => {
     if (!window.speechSynthesis) {
       console.warn("Text-to-speech not supported in this browser.");
       return;
     }
     window.speechSynthesis.cancel();
-    const speechText = questionType === "coding" ? "Solve this coding question" : text;
-    const utter = new SpeechSynthesisUtterance(speechText);
+    const utter = new SpeechSynthesisUtterance(text);
     utter.lang = "en-US";
     if (selectedVoice) utter.voice = selectedVoice;
-    if (questionType === "regular" || questionType === "mcq") {
-      utter.onend = () => {
-        setTimeout(() => {
-          if (!listening && questionType === "regular") {
-            resetTranscript();
-            setAnswer("");
-            SpeechRecognition.startListening({ continuous: true, language: "en-US" });
-            noResponseTimeout.current = setTimeout(() => {
-              if (transcript === "") {
-                SpeechRecognition.stopListening();
-                speak(text, questionType);
-              }
-            }, 10000);
-          }
-        }, 2000);
-      };
-    }
+    utter.onend = () => {
+      setTimeout(() => {
+        if (!listening) {
+          resetTranscript();
+          setAnswer("");
+          SpeechRecognition.startListening({ continuous: true, language: "en-US" });
+          noResponseTimeout.current = setTimeout(() => {
+            if (transcript === "") {
+              SpeechRecognition.stopListening();
+              speak(text);
+            }
+          }, 10000);
+        }
+      }, 2000);
+    };
     window.speechSynthesis.speak(utter);
   };
 
@@ -144,7 +121,7 @@ export default function Interview() {
     const aiMessages = conversation.filter((msg) => msg.role === "ai");
     if (aiMessages.length > lastAIIndex.current) {
       const newAI = aiMessages[aiMessages.length - 1];
-      speak(newAI.text, newAI.type);
+      speak(newAI.text);
       lastAIIndex.current = aiMessages.length;
     }
   }, [conversation]);
@@ -157,54 +134,8 @@ export default function Interview() {
     }
   }, [transcript]);
 
-  const parseQuestionType = (text) => {
-    console.log("Parsing question type for text:", text);
-    if (text.includes("Options:\nA)")) {
-      console.log("Detected MCQ question");
-      return "mcq";
-    } else if (
-      text.startsWith("Solve this problem:") ||
-      text.toLowerCase().includes("write a") ||
-      text.includes("```") ||
-      text.toLowerCase().includes("coding problem")
-    ) {
-      console.log("Detected coding question");
-      return "coding";
-    }
-    console.log("Detected regular question");
-    return "regular";
-  };
-
-  const parseMcqOptions = (text) => {
-    const parts = text.split("\nOptions:\n");
-    const questionPart = parts[0].split("```");
-    const question = questionPart[0].replace("Question: ", "").trim();
-    const code = questionPart.length > 1 ? questionPart[1].split("\n").slice(1, -1).join("\n") : "";
-    const options = parts[1]
-      ? parts[1]
-          .split("\n")
-          .filter(line => line.match(/^[A-D]\)/))
-          .map(line => line.replace(/^[A-D]\)\s*/, ""))
-      : [];
-    return { question, code, options };
-  };
-
-  const parseCodingQuestion = (text) => {
-    const parts = text.split("\n```");
-    const description = parts[0].replace("Solve this problem:", "").trim();
-    const boilerplate = parts.length > 1 ? parts[1].replace(/^\w*\n/, "").trim() : "";
-    console.log("Parsed coding question - Description:", description, "Boilerplate:", boilerplate);
-    return { description, boilerplate };
-  };
-
   const handleSend = async () => {
-    if (!answer.trim() && !mcqSelection) return;
-
-    const lastQuestion = conversation[conversation.length - 1];
-    if (lastQuestion.type === "coding") {
-      console.log("Coding question detected, ignoring handleSend");
-      return;
-    }
+    if (!answer.trim()) return;
 
     if (listening) {
       SpeechRecognition.stopListening();
@@ -214,15 +145,32 @@ export default function Interview() {
       noResponseTimeout.current = null;
     }
 
-    const isMcq = lastQuestion.type === "mcq";
-    const userAnswer = isMcq ? (mcqSelection || "Skipped") : answer;
-
-    const updatedConversation = [...conversation, { role: "user", text: userAnswer, type: isMcq ? "mcq" : lastQuestion.type, stage: lastQuestion.stage }];
+    const userAnswer = answer;
+    const lastQuestion = conversation[conversation.length - 1];
+    const updatedConversation = [...conversation, { role: "user", text: userAnswer, type: "regular", stage: lastQuestion.stage }];
     setConversation(updatedConversation);
     setLoading(true);
     setErrorMessage("");
 
     try {
+      let evaluation = null;
+      if (lastQuestion.stage !== "greeting" && lastQuestion.stage !== "wrapup") {
+        evaluation = await evaluateAnswer({
+          question: lastQuestion.text,
+          answer: userAnswer,
+          topic,
+          stage: lastQuestion.stage
+        });
+        orchestratorRef.current.addAnswerScore(evaluation, evaluation.evaluation);
+      }
+
+      if (timer >= Number(durationMinutes) * 60) {
+        handleEndInterview();
+        return;
+      }
+
+      const followUpType = evaluation ? orchestratorRef.current.determineFollowUpType(evaluation) : null;
+
       const nextStage = orchestratorRef.current.decideNextState(userAnswer, updatedConversation);
       console.log("Next stage:", nextStage);
       if (!nextStage) {
@@ -238,11 +186,10 @@ export default function Interview() {
         conversationHistory: updatedConversation,
         topic,
         stage: nextStage,
-        resumeSkills
+        resumeSkills,
+        followUpType
       });
-      const questionType = parseQuestionType(aiResponse);
-      console.log("AI response:", aiResponse, "Question type:", questionType);
-      setConversation([...updatedConversation, { role: "ai", text: aiResponse, type: questionType, stage: nextStage }]);
+      setConversation([...updatedConversation, { role: "ai", text: aiResponse, type: "regular", stage: nextStage }]);
     } catch (err) {
       console.error("Error fetching next question:", err);
       setErrorMessage(`Error contacting AI: ${err.message}`);
@@ -252,82 +199,12 @@ export default function Interview() {
       ]);
     }
     setAnswer("");
-    setMcqSelection(null);
     resetTranscript();
-    setLoading(false);
-  };
-
-  const handleCodingSubmit = async () => {
-    if (!codingAnswer.trim()) return;
-
-    setLoading(true);
-    setErrorMessage("");
-
-    const formattedAnswer = codingAnswer.startsWith('```')
-      ? codingAnswer
-      : `\`\`\`\n${codingAnswer}\n\`\`\``;
-
-    const updatedConversation = [
-      ...conversation,
-      {
-        role: "user",
-        text: formattedAnswer,
-        type: "coding",
-        stage: conversation[conversation.length - 1].stage
-      }
-    ];
-
-    setConversation(updatedConversation);
-    setShowCodingPopup(false);
-
-    try {
-      const nextStage = orchestratorRef.current.decideNextState(formattedAnswer, updatedConversation);
-      console.log("Next stage after coding:", nextStage);
-      if (!nextStage) {
-        setConversation([...updatedConversation, {
-          role: "ai",
-          text: "Thank you for the interview! Please generate your reports.",
-          type: "regular",
-          stage: "wrapup"
-        }]);
-        setLoading(false);
-        clearInterval(timerRef.current);
-        return;
-      }
-
-      const aiResponse = await getNextQuestion({
-        prompt: formattedAnswer,
-        experienceRange: orchestratorRef.current.experienceLevel || experience || "0-2",
-        conversationHistory: updatedConversation,
-        topic,
-        stage: nextStage,
-        resumeSkills
-      });
-
-      const questionType = parseQuestionType(aiResponse);
-      console.log("AI response after coding:", aiResponse, "Question type:", questionType);
-      setConversation([...updatedConversation, {
-        role: "ai",
-        text: aiResponse,
-        type: questionType,
-        stage: nextStage
-      }]);
-    } catch (err) {
-      console.error("Error processing coding answer:", err);
-      setErrorMessage(`Error processing code: ${err.message}`);
-      setConversation([
-        ...updatedConversation,
-        { role: "ai", text: `Sorry, there was an error processing your code: ${err.message}`, type: "regular", stage: "error" }
-      ]);
-    }
-
-    setCodingAnswer("");
     setLoading(false);
   };
 
   const handleSkip = async () => {
     const lastQuestion = conversation[conversation.length - 1];
-    if (lastQuestion.type === "mcq") return;
 
     if (listening) {
       SpeechRecognition.stopListening();
@@ -337,12 +214,17 @@ export default function Interview() {
       noResponseTimeout.current = null;
     }
 
-    const updatedConversation = [...conversation, { role: "user", text: "Skipped", type: lastQuestion.type, stage: lastQuestion.stage }];
+    const updatedConversation = [...conversation, { role: "user", text: "Skipped", type: "regular", stage: lastQuestion.stage }];
     setConversation(updatedConversation);
     setLoading(true);
     setErrorMessage("");
 
     try {
+      if (timer >= Number(durationMinutes) * 60) {
+        handleEndInterview();
+        return;
+      }
+
       const nextStage = orchestratorRef.current.decideNextState("Skipped", updatedConversation);
       console.log("Next stage after skip:", nextStage);
       if (!nextStage) {
@@ -360,9 +242,7 @@ export default function Interview() {
         stage: nextStage,
         resumeSkills
       });
-      const questionType = parseQuestionType(aiResponse);
-      console.log("AI response after skip:", aiResponse, "Question type:", questionType);
-      setConversation([...updatedConversation, { role: "ai", text: aiResponse, type: questionType, stage: nextStage }]);
+      setConversation([...updatedConversation, { role: "ai", text: aiResponse, type: "regular", stage: nextStage }]);
     } catch (err) {
       console.error("Error fetching next question:", err);
       setErrorMessage(`Error contacting AI: ${err.message}`);
@@ -372,12 +252,12 @@ export default function Interview() {
       ]);
     }
     setAnswer("");
-    setMcqSelection(null);
     resetTranscript();
     setLoading(false);
   };
 
   const handleEndInterview = async () => {
+    window.speechSynthesis.cancel(); // Stop any ongoing speech
     setLoading(true);
     setErrorMessage("");
 
@@ -390,20 +270,21 @@ export default function Interview() {
     setConversation(updatedConversation);
 
     try {
+      const averages = orchestratorRef.current.computeAverages();
       const [userReportText, clientReportText] = await Promise.all([
         generateUserReport({
           experienceRange: orchestratorRef.current?.experienceLevel || experience || "0-2",
           conversationHistory: updatedConversation.filter((msg, idx) => idx > 0),
           topic,
           resumeSkills,
-          proctoringLogs
+          averages
         }),
         generateClientReport({
           experienceRange: orchestratorRef.current?.experienceLevel || experience || "0-2",
           conversationHistory: updatedConversation.filter((msg, idx) => idx > 0),
           topic,
           resumeSkills,
-          proctoringLogs
+          averages
         })
       ]);
 
@@ -474,12 +355,13 @@ export default function Interview() {
     setReportLoading(true);
     setErrorMessage("");
     try {
+      const averages = orchestratorRef.current.computeAverages();
       const reportText = await generateUserReport({
         experienceRange: orchestratorRef.current?.experienceLevel || experience || "0-2",
         conversationHistory: conversation.filter((msg, idx) => idx > 0),
         topic,
         resumeSkills,
-        proctoringLogs
+        averages
       });
       setUserReport(reportText);
       setShowUserReportPopup(true);
@@ -497,12 +379,13 @@ export default function Interview() {
     setReportLoading(true);
     setErrorMessage("");
     try {
+      const averages = orchestratorRef.current.computeAverages();
       const reportText = await generateClientReport({
         experienceRange: orchestratorRef.current?.experienceLevel || experience || "0-2",
         conversationHistory: conversation.filter((msg, idx) => idx > 0),
         topic,
         resumeSkills,
-        proctoringLogs
+        averages
       });
       setClientReport(reportText);
       setShowClientReportPopup(true);
@@ -586,9 +469,22 @@ export default function Interview() {
     }
   };
 
+  const validateDuration = (value) => {
+    const num = Number(value);
+    if (!value.trim() || isNaN(num) || num < 1) {
+      return "Please enter a valid duration (positive number in minutes)";
+    }
+    return "";
+  };
+
   const handleStartInterview = () => {
     if (!experience) {
       setExperienceError("Please select your experience level");
+      return;
+    }
+    const durationValidation = validateDuration(durationMinutes);
+    if (durationValidation) {
+      setDurationError(durationValidation);
       return;
     }
     setShowInstructions(false);
@@ -648,9 +544,9 @@ export default function Interview() {
               Interview Instructions
             </h2>
             <ol style={{ lineHeight: "1.8", textAlign: "left", paddingLeft: "20px" }}>
-              <li style={{ marginBottom: "10px" }}>Read the AI's question carefully. Regular and MCQ questions will be read aloud; coding questions are displayed only.</li>
+              <li style={{ marginBottom: "10px" }}>Read the AI's question carefully. Questions will be read aloud.</li>
               <li style={{ marginBottom: "10px" }}>
-                To answer through voice (for regular questions):
+                To answer through voice:
                 <ul style={{ paddingLeft: "20px", marginTop: "5px" }}>
                   <li>
                     Click <strong style={{ color: "#4fc3f7" }}>"Start Answer"</strong> to begin recording
@@ -675,15 +571,8 @@ export default function Interview() {
                 </ul>
               </li>
               <li style={{ marginBottom: "10px" }}>
-                For MCQ questions, select one option or choose "Skip", then click{" "}
-                <strong style={{ color: "#4fc3f7" }}>"Send Answer"</strong>.
-              </li>
-              <li style={{ marginBottom: "10px" }}>
-                For coding questions, a popup code editor will appear to write your code.
-              </li>
-              <li style={{ marginBottom: "10px" }}>
                 Click <strong style={{ color: "#4fc3f7" }}>"🔊 Read Last Question"</strong> to hear
-                the last regular or MCQ question again or the prompt for coding questions.
+                the last question again.
               </li>
               <li style={{ marginBottom: "10px" }}>
                 Click <strong style={{ color: "#4fc3f7" }}>"End Interview"</strong> to conclude early.
@@ -722,6 +611,35 @@ export default function Interview() {
               {experienceError && (
                 <div style={{ color: "#e53935", marginTop: "5px", fontSize: "14px" }}>
                   {experienceError}
+                </div>
+              )}
+            </div>
+
+            <div style={{ margin: "20px 0" }}>
+              <label style={{ display: "block", marginBottom: "8px", color: "#a0a0a0" }}>
+                Enter interview duration (minutes):
+              </label>
+              <input
+                type="number"
+                value={durationMinutes}
+                onChange={(e) => {
+                  setDurationMinutes(e.target.value);
+                  setDurationError(validateDuration(e.target.value));
+                }}
+                placeholder="e.g., 15"
+                style={{
+                  padding: "10px",
+                  borderRadius: "6px",
+                  backgroundColor: "#333",
+                  color: "#e0e0e0",
+                  border: durationError ? "1px solid #e53935" : "1px solid #444",
+                  width: "100%",
+                  fontSize: "16px",
+                }}
+              />
+              {durationError && (
+                <div style={{ color: "#e53935", marginTop: "5px", fontSize: "14px" }}>
+                  {durationError}
                 </div>
               )}
             </div>
@@ -891,8 +809,8 @@ export default function Interview() {
                   )}
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <b>{msg.role === "ai" ? "ZEERO AI" : "You"} ({msg.stage}):</b>
-                      {msg.role === "ai" && msg.type !== "mcq" && idx === conversation.length - 1 && (
+                      <b>{msg.role === "ai" ? "ZEERO AI" : "You"}</b>
+                      {msg.role === "ai" && idx === conversation.length - 1 && (
                         <button
                           onClick={handleSkip}
                           disabled={loading || !interviewStarted}
@@ -911,46 +829,17 @@ export default function Interview() {
                         </button>
                       )}
                     </div>
-                    {msg.role === "ai" && msg.type === "mcq" ? (
-                      <div>
-                        <div>{parseMcqOptions(msg.text).question}</div>
-                        {parseMcqOptions(msg.text).code && (
-                          <pre
-                            style={{
-                              background: "#1a1a1a",
-                              padding: "10px",
-                              borderRadius: "6px",
-                              whiteSpace: "pre-wrap",
-                              margin: "10px 0",
-                            }}
-                          >
-                            {parseMcqOptions(msg.text).code}
-                          </pre>
-                        )}
-                      </div>
-                    ) : msg.role === "ai" && msg.type === "coding" ? (
-                      <div>
-                        <ReactMarkdown
-                          components={{
-                            p: ({ children }) => <p style={{ margin: "10px 0", color: "#e0e0e0" }}>{children}</p>,
-                          }}
-                        >
-                          {parseCodingQuestion(msg.text).description}
-                        </ReactMarkdown>
-                      </div>
-                    ) : (
-                      <ReactMarkdown
-                        components={{
-                          code: ({ node, inline, children, ...props }) => (
-                            <code style={{ fontFamily: "monospace", background: "#1a1a1a", padding: inline ? "2px 4px" : "10px", borderRadius: "4px", display: inline ? "inline" : "block" }} {...props}>
-                              {children}
-                            </code>
-                          ),
-                        }}
-                      >
-                        {msg.text}
-                      </ReactMarkdown>
-                    )}
+                    <ReactMarkdown
+                      components={{
+                        code: ({ node, inline, children, ...props }) => (
+                          <code style={{ fontFamily: "monospace", background: "#1a1a1a", padding: inline ? "2px 4px" : "10px", borderRadius: "4px", display: inline ? "inline" : "block" }} {...props}>
+                            {children}
+                          </code>
+                        ),
+                      }}
+                    >
+                      {msg.text}
+                    </ReactMarkdown>
                   </div>
                 </div>
               ))
@@ -990,55 +879,24 @@ export default function Interview() {
                 </div>
               )}
             </div>
-            {conversation.length > 0 &&
-            conversation[conversation.length - 1].role === "ai" &&
-            conversation[conversation.length - 1].type === "mcq" ? (
-              <div>
-                {[...parseMcqOptions(conversation[conversation.length - 1].text).options, "Skip"].map(
-                  (option, i) => (
-                    <label
-                      key={i}
-                      style={{
-                        display: "block",
-                        margin: "10px 0",
-                        color: "#e0e0e0",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="mcq"
-                        value={option}
-                        checked={mcqSelection === option}
-                        onChange={(e) => setMcqSelection(e.target.value)}
-                        style={{ marginRight: "10px" }}
-                        disabled={loading || !interviewStarted}
-                      />
-                      {i < 4 ? String.fromCharCode(65 + i) + ") " : ""}{option}
-                    </label>
-                  )
-                )}
-              </div>
-            ) : (
-              <textarea
-                value={answer}
-                onChange={(e) => setAnswer(e.target.value)}
-                placeholder={interviewStarted ? "Speak or type your answer..." : "Please start the interview first"}
-                style={{
-                  width: "100%",
-                  minHeight: "80px",
-                  border: "1px solid #444",
-                  padding: "12px",
-                  background: "#333",
-                  color: "#e0e0e0",
-                  borderRadius: "6px",
-                  resize: "vertical",
-                  fontSize: "16px",
-                  fontFamily: "inherit",
-                }}
-                disabled={loading || !interviewStarted || showCodingPopup}
-              />
-            )}
+            <textarea
+              value={answer}
+              onChange={(e) => setAnswer(e.target.value)}
+              placeholder={interviewStarted ? "Speak or type your answer..." : "Please start the interview first"}
+              style={{
+                width: "100%",
+                minHeight: "80px",
+                border: "1px solid #444",
+                padding: "12px",
+                background: "#333",
+                color: "#e0e0e0",
+                borderRadius: "6px",
+                resize: "vertical",
+                fontSize: "16px",
+                fontFamily: "inherit",
+              }}
+              disabled={loading || !interviewStarted}
+            />
           </div>
         </div>
 
@@ -1115,7 +973,10 @@ export default function Interview() {
             }}
           >
             <button
-              onClick={() => navigate("/")}
+              onClick={() => {
+                window.speechSynthesis.cancel(); // Stop speech before navigating
+                navigate("/");
+              }}
               style={{
                 backgroundColor: "#4CAF50",
                 color: "white",
@@ -1139,13 +1000,7 @@ export default function Interview() {
                 setAnswer("");
                 SpeechRecognition.startListening({ continuous: true, language: "en-US" });
               }}
-              disabled={
-                listening ||
-                loading ||
-                !interviewStarted ||
-                (conversation.length > 0 &&
-                  conversation[conversation.length - 1].type === "mcq")
-              }
+              disabled={listening || loading || !interviewStarted}
               style={buttonStyle}
             >
               Start Answer
@@ -1162,18 +1017,13 @@ export default function Interview() {
             </button>
             <button
               onClick={handleSend}
-              disabled={
-                loading ||
-                (!answer.trim() && !mcqSelection) ||
-                listening ||
-                !interviewStarted
-              }
+              disabled={loading || !answer.trim() || listening || !interviewStarted}
               style={{ ...buttonStyle, backgroundColor: "#1e88e5" }}
             >
               Send Answer
             </button>
             <button
-              onClick={() => speak(conversation[conversation.length - 1]?.text, conversation[conversation.length - 1]?.type)}
+              onClick={() => speak(conversation[conversation.length - 1]?.text)}
               disabled={loading || !interviewStarted || conversation.length === 0}
               style={buttonStyle}
             >
@@ -1188,18 +1038,14 @@ export default function Interview() {
             </button>
             <button
               onClick={handleGenerateUserReport}
-              disabled={
-                reportLoading || loading || conversationHistory.length === 0 || !interviewStarted
-              }
+              disabled={reportLoading || loading || conversationHistory.length === 0 || !interviewStarted}
               style={{ ...buttonStyle, backgroundColor: "#43a047" }}
             >
               {reportLoading ? "Generating..." : "Generate User Report"}
             </button>
             <button
               onClick={handleGenerateClientReport}
-              disabled={
-                reportLoading || loading || conversationHistory.length === 0 || !interviewStarted
-              }
+              disabled={reportLoading || loading || conversationHistory.length === 0 || !interviewStarted}
               style={{ ...buttonStyle, backgroundColor: "#43a047" }}
             >
               {reportLoading ? "Generating..." : "Generate Client Report"}
@@ -1236,101 +1082,6 @@ export default function Interview() {
           )}
         </div>
       </div>
-
-      {showCodingPopup && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0,0,0,0.9)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            zIndex: 1000,
-          }}
-        >
-          <div
-            style={{
-              backgroundColor: "#2d2d2d",
-              padding: "30px",
-              borderRadius: "10px",
-              maxWidth: "900px",
-              maxHeight: "90vh",
-              width: "90%",
-              overflow: "auto",
-              color: "#e0e0e0",
-              border: "1px solid #444",
-            }}
-          >
-            <h2 style={{ color: "#4fc3f7", textAlign: "center", marginBottom: "20px" }}>
-              Code Editor
-            </h2>
-            <div style={{ marginBottom: "20px" }}>
-              <ReactMarkdown
-                components={{
-                  p: ({ children }) => <p style={{ margin: "10px 0", color: "#e0e0e0" }}>{children}</p>,
-                }}
-              >
-                {parseCodingQuestion(conversation[conversation.length - 1]?.text).description}
-              </ReactMarkdown>
-            </div>
-            <Editor
-              height="60vh"
-              language={
-                conversation[conversation.length - 1]?.text.toLowerCase().includes("python") ? "python" :
-                conversation[conversation.length - 1]?.text.toLowerCase().includes("java") ? "java" :
-                conversation[conversation.length - 1]?.text.toLowerCase().includes("javascript") ? "javascript" :
-                "plaintext"
-              }
-              theme="vs-dark"
-              value={codingAnswer}
-              onChange={(value) => setCodingAnswer(value || "")}
-              options={{
-                minimap: { enabled: false },
-                fontSize: 14,
-                wordWrap: "on",
-                automaticLayout: true,
-              }}
-            />
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "20px" }}>
-              <button
-                onClick={() => {
-                  setShowCodingPopup(false);
-                  setCodingAnswer("");
-                }}
-                style={{
-                  padding: "10px 20px",
-                  backgroundColor: "#e53935",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: "6px",
-                  cursor: "pointer",
-                  marginRight: "10px",
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCodingSubmit}
-                disabled={loading || !codingAnswer.trim()}
-                style={{
-                  padding: "10px 20px",
-                  backgroundColor: codingAnswer.trim() ? "#4caf50" : "#333",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: "6px",
-                  cursor: codingAnswer.trim() ? "pointer" : "not-allowed",
-                }}
-              >
-                {loading ? "Submitting..." : "Submit Code"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {showUserReportPopup && (
         <div
@@ -1523,6 +1274,10 @@ export default function Interview() {
             50% { opacity: 0.5; }
             100% { opacity: 1; }
           }
+          @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); opacity: 0.5; }
+            40% { transform: scale(1); opacity: 1; }
+          }
           textarea:focus, select:focus, button:focus, input:focus {
             outline: 1px solid #4fc3f7;
             box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.3);
@@ -1541,41 +1296,9 @@ export default function Interview() {
             font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
               monospace;
           }
-          .code-editor {
-            font-family: 'Fira Code', 'Consolas', monospace;
-            tab-size: 2;
-          }
-          .code-editor:focus {
-            outline: none;
-          }
-          pre {
-            position: relative;
-          }
-          pre code {
-            display: block;
-            padding: 1em;
-            overflow-x: auto;
-          }
-          .token.comment,
-          .token.prolog,
-          .token.doctype,
-          .token.cdata {
-            color: #6a9955;
-          }
-          .token.punctuation {
-            color: #d4d4d4;
-          }
-          .token.property,
-          .token.tag,
-          .token.boolean,
-          .token.number,
-          .token.constant,
-          .token.symbol,
-          .token.deleted {
-            color: #b5cea8;
-          }
         `}
       </style>
+      {/* <InterviewSecurity addProctoringLog={addProctoringLog} /> */}
     </div>
   );
 }
@@ -1599,14 +1322,4 @@ const dotStyle = (delay) => ({
   backgroundColor: "#4fc3f7",
   borderRadius: "50%",
   animation: `bounce 1.4s infinite ${delay}s`,
-  "@keyframes bounce": {
-    "0%, 80%, 100%": {
-      transform: "scale(0)",
-      opacity: 0.5,
-    },
-    "40%": {
-      transform: "scale(1)",
-      opacity: 1,
-    },
-  },
 });

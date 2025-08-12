@@ -1,3 +1,4 @@
+// TechSelection.js (unchanged)
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import * as pdfjsLib from "pdfjs-dist/build/pdf";
