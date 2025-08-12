@@ -8,7 +8,7 @@ import ReactMarkdown from "react-markdown";
 import logo from "./assets/zeero-ai.png";
 import Editor from '@monaco-editor/react';
 import InterviewSecurity from "./InterviewSecurity"; // New component import
-import EyeProctoring from "./EyeProctoring"; // NEW: Import EyeProctoring
+// import EyeProctoring from "./EyeProctoring"; // NEW: Import EyeProctoring
 
 export default function Interview() {
   const location = useLocation();
