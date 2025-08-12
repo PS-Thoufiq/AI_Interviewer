@@ -1,4 +1,3 @@
-
 export class InterviewOrchestrator {
   constructor(topic, resumeSkills = []) {
     this.topic = topic;
@@ -61,8 +60,6 @@ export class InterviewOrchestrator {
   isNonCodingTopic() {
     const topicLower = this.topic.toLowerCase().trim();
     const skillsLower = this.resumeSkills.map(skill => skill.toLowerCase().trim());
-    
-    // Check if topic or any resume skill matches a non-coding topic
     return this.nonCodingTopics.some(nonCodingTopic => {
       const nonCodingTopicLower = nonCodingTopic.toLowerCase();
       return topicLower === nonCodingTopicLower || 
@@ -85,7 +82,6 @@ export class InterviewOrchestrator {
       case "greeting":
         this.currentState = "background";
         return "background";
-
       case "background":
         this.backgroundQuestionsAsked++;
         this.currentSkillIndex++;
@@ -96,14 +92,12 @@ export class InterviewOrchestrator {
         this.experienceLevel = this.determineExperienceLevel();
         this.currentState = "mcq";
         return "mcq";
-
       case "mcq":
         this.mcqQuestionsAsked++;
         if (this.mcqQuestionsAsked < this.maxMcqQuestions) {
           this.currentState = "mcq";
           return "mcq";
         }
-        // Skip coding stage for non-coding topics
         if (this.isNonCodingTopic()) {
           console.log("Non-coding topic detected, skipping coding stage");
           this.currentState = "wrapup";
@@ -111,7 +105,6 @@ export class InterviewOrchestrator {
         }
         this.currentState = "coding";
         return "coding";
-
       case "coding":
         this.codingQuestionsAsked++;
         if (this.codingQuestionsAsked < this.maxCodingQuestions) {
@@ -120,10 +113,8 @@ export class InterviewOrchestrator {
         }
         this.currentState = "wrapup";
         return "wrapup";
-
       case "wrapup":
         return null;
-
       default:
         return "mcq"; // Fallback
     }

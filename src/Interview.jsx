@@ -32,6 +32,7 @@ export default function Interview() {
   const [selectedVoice, setSelectedVoice] = useState(null);
   const [showCodingPopup, setShowCodingPopup] = useState(false);
   const [codingAnswer, setCodingAnswer] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
   const orchestratorRef = useRef(null);
   const timerRef = useRef(null);
   const lastAIIndex = useRef(0);
@@ -47,7 +48,7 @@ export default function Interview() {
 
   const noResponseTimeout = useRef(null);
 
-  const addProctoringLog = (log) => setProctoringLogs((prev) => [...prev, log]);
+  const addProctoringLog = (log) => setProctoringLogs((prev) => [...prev, { timestamp: new Date().toISOString(), event: log }]);
 
   useEffect(() => {
     const updateVoices = () => {
@@ -102,30 +103,22 @@ export default function Interview() {
       console.warn("Text-to-speech not supported in this browser.");
       return;
     }
-    window.speechSynthesis.cancel(); // Cancel any ongoing speech
-    let speechText;
-    if (questionType === "mcq") {
-      speechText = "Answer this MCQ question";
-    } else if (questionType === "coding") {
-      speechText = "Solve this coding question";
-    } else {
-      speechText = text;
-    }
+    window.speechSynthesis.cancel();
+    const speechText = questionType === "coding" ? "Solve this coding question" : text;
     const utter = new SpeechSynthesisUtterance(speechText);
     utter.lang = "en-US";
     if (selectedVoice) utter.voice = selectedVoice;
-    if (questionType === "regular") {
+    if (questionType === "regular" || questionType === "mcq") {
       utter.onend = () => {
         setTimeout(() => {
-          if (!listening) {
+          if (!listening && questionType === "regular") {
             resetTranscript();
             setAnswer("");
             SpeechRecognition.startListening({ continuous: true, language: "en-US" });
-            // Set timeout to re-read if no response after 10 seconds
             noResponseTimeout.current = setTimeout(() => {
               if (transcript === "") {
                 SpeechRecognition.stopListening();
-                speak(text, questionType); // Re-speak the question
+                speak(text, questionType);
               }
             }, 10000);
           }
@@ -227,6 +220,7 @@ export default function Interview() {
     const updatedConversation = [...conversation, { role: "user", text: userAnswer, type: isMcq ? "mcq" : lastQuestion.type, stage: lastQuestion.stage }];
     setConversation(updatedConversation);
     setLoading(true);
+    setErrorMessage("");
 
     try {
       const nextStage = orchestratorRef.current.decideNextState(userAnswer, updatedConversation);
@@ -240,7 +234,7 @@ export default function Interview() {
 
       const aiResponse = await getNextQuestion({
         prompt: userAnswer,
-        experienceRange: orchestratorRef.current.experienceLevel || "0-2",
+        experienceRange: orchestratorRef.current.experienceLevel || experience || "0-2",
         conversationHistory: updatedConversation,
         topic,
         stage: nextStage,
@@ -251,9 +245,10 @@ export default function Interview() {
       setConversation([...updatedConversation, { role: "ai", text: aiResponse, type: questionType, stage: nextStage }]);
     } catch (err) {
       console.error("Error fetching next question:", err);
+      setErrorMessage(`Error contacting AI: ${err.message}`);
       setConversation([
         ...updatedConversation,
-        { role: "ai", text: "Sorry, there was an error contacting the AI.", type: "regular", stage: "error" }
+        { role: "ai", text: `Sorry, there was an error contacting the AI: ${err.message}`, type: "regular", stage: "error" }
       ]);
     }
     setAnswer("");
@@ -266,6 +261,7 @@ export default function Interview() {
     if (!codingAnswer.trim()) return;
 
     setLoading(true);
+    setErrorMessage("");
 
     const formattedAnswer = codingAnswer.startsWith('```')
       ? codingAnswer
@@ -301,7 +297,7 @@ export default function Interview() {
 
       const aiResponse = await getNextQuestion({
         prompt: formattedAnswer,
-        experienceRange: orchestratorRef.current.experienceLevel || "0-2",
+        experienceRange: orchestratorRef.current.experienceLevel || experience || "0-2",
         conversationHistory: updatedConversation,
         topic,
         stage: nextStage,
@@ -318,9 +314,10 @@ export default function Interview() {
       }]);
     } catch (err) {
       console.error("Error processing coding answer:", err);
+      setErrorMessage(`Error processing code: ${err.message}`);
       setConversation([
         ...updatedConversation,
-        { role: "ai", text: "Sorry, there was an error processing your code.", type: "regular", stage: "error" }
+        { role: "ai", text: `Sorry, there was an error processing your code: ${err.message}`, type: "regular", stage: "error" }
       ]);
     }
 
@@ -343,6 +340,7 @@ export default function Interview() {
     const updatedConversation = [...conversation, { role: "user", text: "Skipped", type: lastQuestion.type, stage: lastQuestion.stage }];
     setConversation(updatedConversation);
     setLoading(true);
+    setErrorMessage("");
 
     try {
       const nextStage = orchestratorRef.current.decideNextState("Skipped", updatedConversation);
@@ -356,7 +354,7 @@ export default function Interview() {
 
       const aiResponse = await getNextQuestion({
         prompt: "Skipped",
-        experienceRange: orchestratorRef.current.experienceLevel || "0-2",
+        experienceRange: orchestratorRef.current.experienceLevel || experience || "0-2",
         conversationHistory: updatedConversation,
         topic,
         stage: nextStage,
@@ -367,9 +365,10 @@ export default function Interview() {
       setConversation([...updatedConversation, { role: "ai", text: aiResponse, type: questionType, stage: nextStage }]);
     } catch (err) {
       console.error("Error fetching next question:", err);
+      setErrorMessage(`Error contacting AI: ${err.message}`);
       setConversation([
         ...updatedConversation,
-        { role: "ai", text: "Sorry, there was an error contacting the AI.", type: "regular", stage: "error" }
+        { role: "ai", text: `Sorry, there was an error contacting the AI: ${err.message}`, type: "regular", stage: "error" }
       ]);
     }
     setAnswer("");
@@ -380,6 +379,7 @@ export default function Interview() {
 
   const handleEndInterview = async () => {
     setLoading(true);
+    setErrorMessage("");
 
     const updatedConversation = [...conversation, {
       role: "ai",
@@ -392,14 +392,14 @@ export default function Interview() {
     try {
       const [userReportText, clientReportText] = await Promise.all([
         generateUserReport({
-          experienceRange: orchestratorRef.current?.experienceLevel || "0-2",
+          experienceRange: orchestratorRef.current?.experienceLevel || experience || "0-2",
           conversationHistory: updatedConversation.filter((msg, idx) => idx > 0),
           topic,
           resumeSkills,
           proctoringLogs
         }),
         generateClientReport({
-          experienceRange: orchestratorRef.current?.experienceLevel || "0-2",
+          experienceRange: orchestratorRef.current?.experienceLevel || experience || "0-2",
           conversationHistory: updatedConversation.filter((msg, idx) => idx > 0),
           topic,
           resumeSkills,
@@ -422,7 +422,7 @@ export default function Interview() {
         doc.setTextColor(149, 165, 166);
         doc.text(`Generated on ${new Date().toLocaleString()}`, 105, 28, { align: "center" });
         doc.setFontSize(12);
-        doc.text(`Experience Level: ${getExperienceLabel(orchestratorRef.current?.experienceLevel || "0-2")}`, 15, 40);
+        doc.text(`Experience Level: ${getExperienceLabel(orchestratorRef.current?.experienceLevel || experience || "0-2")}`, 15, 40);
         if (resumeSkills.length > 0) {
           doc.text(`Resume Skills: ${resumeSkills.join(", ")}`, 15, 48);
         }
@@ -445,6 +445,7 @@ export default function Interview() {
       }, 2000);
     } catch (err) {
       console.error("Error generating reports:", err);
+      setErrorMessage(`Error generating reports: ${err.message}`);
       setTimeout(() => {
         navigate("/");
       }, 1000);
@@ -471,9 +472,10 @@ export default function Interview() {
   const handleGenerateUserReport = async () => {
     setUserReport("");
     setReportLoading(true);
+    setErrorMessage("");
     try {
       const reportText = await generateUserReport({
-        experienceRange: orchestratorRef.current?.experienceLevel || "0-2",
+        experienceRange: orchestratorRef.current?.experienceLevel || experience || "0-2",
         conversationHistory: conversation.filter((msg, idx) => idx > 0),
         topic,
         resumeSkills,
@@ -483,7 +485,8 @@ export default function Interview() {
       setShowUserReportPopup(true);
     } catch (err) {
       console.error("Error generating user report:", err);
-      setUserReport("Sorry, there was an error generating the user report.");
+      setErrorMessage(`Error generating user report: ${err.message}`);
+      setUserReport(`Sorry, there was an error generating the user report: ${err.message}`);
       setShowUserReportPopup(true);
     }
     setReportLoading(false);
@@ -492,9 +495,10 @@ export default function Interview() {
   const handleGenerateClientReport = async () => {
     setClientReport("");
     setReportLoading(true);
+    setErrorMessage("");
     try {
       const reportText = await generateClientReport({
-        experienceRange: orchestratorRef.current?.experienceLevel || "0-2",
+        experienceRange: orchestratorRef.current?.experienceLevel || experience || "0-2",
         conversationHistory: conversation.filter((msg, idx) => idx > 0),
         topic,
         resumeSkills,
@@ -504,7 +508,8 @@ export default function Interview() {
       setShowClientReportPopup(true);
     } catch (err) {
       console.error("Error generating client report:", err);
-      setClientReport("Sorry, there was an error generating the client report.");
+      setErrorMessage(`Error generating client report: ${err.message}`);
+      setClientReport(`Sorry, there was an error generating the client report: ${err.message}`);
       setShowClientReportPopup(true);
     }
     setReportLoading(false);
@@ -521,7 +526,7 @@ export default function Interview() {
     doc.setTextColor(149, 165, 166);
     doc.text(`Generated on ${new Date().toLocaleString()}`, 105, 28, { align: "center" });
     doc.setFontSize(12);
-    doc.text(`Experience Level: ${getExperienceLabel(orchestratorRef.current?.experienceLevel || "0-2")}`, 15, 40);
+    doc.text(`Experience Level: ${getExperienceLabel(orchestratorRef.current?.experienceLevel || experience || "0-2")}`, 15, 40);
     if (resumeSkills.length > 0) {
       doc.text(`Resume Skills: ${resumeSkills.join(", ")}`, 15, 48);
     }
@@ -547,7 +552,7 @@ export default function Interview() {
     doc.setTextColor(149, 165, 166);
     doc.text(`Generated on ${new Date().toLocaleString()}`, 105, 28, { align: "center" });
     doc.setFontSize(12);
-    doc.text(`Experience Level: ${getExperienceLabel(orchestratorRef.current?.experienceLevel || "0-2")}`, 15, 40);
+    doc.text(`Experience Level: ${getExperienceLabel(orchestratorRef.current?.experienceLevel || experience || "0-2")}`, 15, 40);
     if (resumeSkills.length > 0) {
       doc.text(`Resume Skills: ${resumeSkills.join(", ")}`, 15, 48);
     }
@@ -588,6 +593,7 @@ export default function Interview() {
     }
     setShowInstructions(false);
     setInterviewStarted(true);
+    addProctoringLog("Interview started");
   };
 
   const handleImageError = (e) => {
@@ -611,7 +617,6 @@ export default function Interview() {
         boxSizing: "border-box",
       }}
     >
-      <InterviewSecurity onEndInterview={handleEndInterview} />
       {showInstructions && (
         <div
           style={{
@@ -643,7 +648,7 @@ export default function Interview() {
               Interview Instructions
             </h2>
             <ol style={{ lineHeight: "1.8", textAlign: "left", paddingLeft: "20px" }}>
-              <li style={{ marginBottom: "10px" }}>Read the AI's question carefully. Regular questions will be read aloud; MCQ and coding questions are displayed only.</li>
+              <li style={{ marginBottom: "10px" }}>Read the AI's question carefully. Regular and MCQ questions will be read aloud; coding questions are displayed only.</li>
               <li style={{ marginBottom: "10px" }}>
                 To answer through voice (for regular questions):
                 <ul style={{ paddingLeft: "20px", marginTop: "5px" }}>
@@ -678,7 +683,7 @@ export default function Interview() {
               </li>
               <li style={{ marginBottom: "10px" }}>
                 Click <strong style={{ color: "#4fc3f7" }}>"🔊 Read Last Question"</strong> to hear
-                the last regular question again or the prompt for MCQ/coding questions.
+                the last regular or MCQ question again or the prompt for coding questions.
               </li>
               <li style={{ marginBottom: "10px" }}>
                 Click <strong style={{ color: "#4fc3f7" }}>"End Interview"</strong> to conclude early.
@@ -815,6 +820,19 @@ export default function Interview() {
             ZEERO AI Interviewer ({resumeSkills.length > 0 ? resumeSkills.join(", ") : topic})
           </h2>
 
+          {errorMessage && (
+            <div style={{
+              backgroundColor: "#e53935",
+              color: "#fff",
+              padding: "10px",
+              borderRadius: "6px",
+              marginBottom: "10px",
+              textAlign: "center",
+            }}>
+              {errorMessage}
+            </div>
+          )}
+
           <div
             style={{
               flex: "1",
@@ -921,7 +939,17 @@ export default function Interview() {
                         </ReactMarkdown>
                       </div>
                     ) : (
-                      msg.text
+                      <ReactMarkdown
+                        components={{
+                          code: ({ node, inline, children, ...props }) => (
+                            <code style={{ fontFamily: "monospace", background: "#1a1a1a", padding: inline ? "2px 4px" : "10px", borderRadius: "4px", display: inline ? "inline" : "block" }} {...props}>
+                              {children}
+                            </code>
+                          ),
+                        }}
+                      >
+                        {msg.text}
+                      </ReactMarkdown>
                     )}
                   </div>
                 </div>
@@ -966,7 +994,7 @@ export default function Interview() {
             conversation[conversation.length - 1].role === "ai" &&
             conversation[conversation.length - 1].type === "mcq" ? (
               <div>
-                {[parseMcqOptions(conversation[conversation.length - 1].text).options, "Skip"].map(
+                {[...parseMcqOptions(conversation[conversation.length - 1].text).options, "Skip"].map(
                   (option, i) => (
                     <label
                       key={i}
@@ -982,10 +1010,7 @@ export default function Interview() {
                         name="mcq"
                         value={option}
                         checked={mcqSelection === option}
-                        onChange={(e) => {
-                          setMcqSelection(e.target.value);
-                          handleSend();
-                        }}
+                        onChange={(e) => setMcqSelection(e.target.value)}
                         style={{ marginRight: "10px" }}
                         disabled={loading || !interviewStarted}
                       />
@@ -1009,11 +1034,7 @@ export default function Interview() {
                   borderRadius: "6px",
                   resize: "vertical",
                   fontSize: "16px",
-                  fontFamily:
-                    conversation.length > 0 &&
-                    conversation[conversation.length - 1].type === "coding"
-                    ? "monospace"
-                    : "inherit",
+                  fontFamily: "inherit",
                 }}
                 disabled={loading || !interviewStarted || showCodingPopup}
               />
@@ -1046,7 +1067,7 @@ export default function Interview() {
             >
               <span style={{ color: "#a0a0a0", marginRight: "10px" }}>Experience Level:</span>
               <strong style={{ color: "#4fc3f7" }}>
-                {getExperienceLabel(orchestratorRef.current?.experienceLevel || experience)}
+                {getExperienceLabel(orchestratorRef.current?.experienceLevel || experience || "0-2")}
               </strong>
             </div>
             <div
@@ -1094,7 +1115,7 @@ export default function Interview() {
             }}
           >
             <button
-              onClick={() => window.location.href = "/"}
+              onClick={() => navigate("/")}
               style={{
                 backgroundColor: "#4CAF50",
                 color: "white",
