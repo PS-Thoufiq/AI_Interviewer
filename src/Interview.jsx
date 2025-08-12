@@ -7,6 +7,8 @@ import { jsPDF } from "jspdf";
 import ReactMarkdown from "react-markdown";
 import logo from "./assets/zeero-ai.png";
 import Editor from '@monaco-editor/react';
+import InterviewSecurity from "./InterviewSecurity"; // New component import
+import EyeProctoring from "./EyeProctoring"; // NEW: Import EyeProctoring
 
 export default function Interview() {
   const location = useLocation();
@@ -34,6 +36,7 @@ export default function Interview() {
   const orchestratorRef = useRef(null);
   const timerRef = useRef(null);
   const lastAIIndex = useRef(0);
+  const [proctoringLogs, setProctoringLogs] = useState([]); // NEW: State for proctoring logs
 
   // Speech-to-text hooks
   const {
@@ -42,6 +45,9 @@ export default function Interview() {
     resetTranscript,
     browserSupportsSpeechRecognition,
   } = useSpeechRecognition();
+
+  // NEW: Function to add proctoring logs
+  const addProctoringLog = (log) => setProctoringLogs((prev) => [...prev, log]);
 
   // Initialize voices
   useEffect(() => {
@@ -384,7 +390,7 @@ export default function Interview() {
     return () => clearInterval(interval);
   }, [listening, transcript]);
 
-  // Generate user report
+  // Generate user report (MODIFIED: Added proctoringLogs)
   const handleGenerateUserReport = async () => {
     setUserReport("");
     setReportLoading(true);
@@ -393,7 +399,8 @@ export default function Interview() {
         experienceRange: orchestratorRef.current?.experienceLevel || "0-2",
         conversationHistory: conversation.filter((msg, idx) => idx > 0),
         topic,
-        resumeSkills
+        resumeSkills,
+        proctoringLogs // NEW: Added proctoringLogs
       });
       setUserReport(reportText);
       setShowUserReportPopup(true);
@@ -405,7 +412,7 @@ export default function Interview() {
     setReportLoading(false);
   };
 
-  // Generate client report
+  // Generate client report (MODIFIED: Added proctoringLogs)
   const handleGenerateClientReport = async () => {
     setClientReport("");
     setReportLoading(true);
@@ -414,7 +421,8 @@ export default function Interview() {
         experienceRange: orchestratorRef.current?.experienceLevel || "0-2",
         conversationHistory: conversation.filter((msg, idx) => idx > 0),
         topic,
-        resumeSkills
+        resumeSkills,
+        proctoringLogs // NEW: Added proctoringLogs
       });
       setClientReport(reportText);
       setShowClientReportPopup(true);
@@ -529,6 +537,7 @@ export default function Interview() {
         boxSizing: "border-box",
       }}
     >
+      <InterviewSecurity onEndInterview={handleEndInterview} /> {/* Integrate new security component */}
       {/* Instructions Modal */}
       {showInstructions && (
         <div
@@ -601,6 +610,7 @@ export default function Interview() {
               <li style={{ marginBottom: "10px" }}>
                 Click <strong style={{ color: "#4fc3f7" }}>"End Interview"</strong> to conclude early.
               </li>
+              <li style={{ marginBottom: "10px" }}>This interview uses your webcam for AI proctoring to detect malpractices like looking away. Please grant camera permission and keep your face visible.</li> {/* NEW: Added proctoring note */}
               <li>
                 Generate two reports: one for your feedback and one for recruiters.
               </li>
@@ -1458,7 +1468,7 @@ export default function Interview() {
             outline: none;
           }
           pre {
-            position: העrelative;
+            position: relative;
           }
           pre code {
             display: block;
