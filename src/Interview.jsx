@@ -10,11 +10,11 @@ import InterviewSecurity from "./InterviewSecurity";
 
 export default function Interview() {
   const location = useLocation();
-  const { topic, resumeSkills = [] } = location.state || { topic: "Java Spring Boot", resumeSkills: [] };
+  const { userName, topic, resumeSkills = [] } = location.state || { userName: '', topic: "Java Spring Boot", resumeSkills: [] };
   const INITIAL_AI_QUESTION = `Hello! I'm your AI interviewer specialized in ${resumeSkills.length > 0 ? resumeSkills.join(", ") : topic}. I'll be asking you questions to assess your background and skills. Let's start with your introduction — please tell me about your background and work with ${resumeSkills.length > 0 ? resumeSkills.join(", ") : topic}.`;
 
   const [experience, setExperience] = useState("");
-  const [durationMinutes, setDurationMinutes] = useState("15"); // Default to 15 minutes
+  const [durationMinutes, setDurationMinutes] = useState("15");
   const [durationError, setDurationError] = useState("");
   const [conversation, setConversation] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -66,7 +66,6 @@ export default function Interview() {
     return () => clearInterval(timerRef.current);
   }, [interviewStarted, conversation]);
 
-  // Automatically end interview when timer exceeds duration
   useEffect(() => {
     if (interviewStarted && timer >= Number(durationMinutes) * 60) {
       handleEndInterview();
@@ -271,6 +270,27 @@ export default function Interview() {
       setUserReport(userReportText);
       setClientReport(clientReportText);
 
+      // Save to backend
+      const saveRes = await fetch('http://10.3.0.10:3002/api/interviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userName,
+          topic,
+          resumeSkills,
+          experience: orchestratorRef.current?.experienceLevel || experience || "0-2",
+          durationMinutes: Number(durationMinutes),
+          conversation: updatedConversation,
+          proctoringLogs,
+          userReport: userReportText,
+          clientReport: clientReportText,
+          timer
+        })
+      });
+      if (!saveRes.ok) {
+        console.error('Failed to save to database:', await saveRes.text());
+      }
+
       const downloadReport = (reportText, type) => {
         const doc = new jsPDF();
         doc.setFontSize(20);
@@ -305,8 +325,8 @@ export default function Interview() {
         navigate("/");
       }, 2000);
     } catch (err) {
-      console.error("Error generating reports:", err);
-      setErrorMessage(`Error generating reports: ${err.message}`);
+      console.error("Error generating reports or saving to database:", err);
+      setErrorMessage(`Error: ${err.message}`);
       setTimeout(() => {
         navigate("/");
       }, 1000);

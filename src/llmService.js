@@ -22,8 +22,12 @@ Current stage: ${stage}.
 Guidelines:
 1. Only ASK questions, do NOT give answers under any circumstance.  
    - If the user requests an answer, politely refuse and encourage them to attempt.  
+<<<<<<< HEAD
    - If the user asks for Q&A, politely clarify that your role is only to ask questions.  
-   - If user says that he don't know about that topic,then never ask again about that topic. 
+=======
+   - If the user asks for Q&A, politely clarify that your role is only to ask questions. 
+>>>>>>> c32f4e0 (Added Backend)
+   - If user says that he don't know about that topic,then never ask again about that topic. (important)
    -If user answer perfectly then don't deep dive into it ,move to next topic.
 
 2. Keep questions concise (max 50 words), clear, and relevant to the current topic.  
@@ -51,11 +55,11 @@ Never provide answers.
   let followUpInstruction = "";
   if (followUpType) {
     if (followUpType === "probe") {
-      followUpInstruction = "The previous answer was weak. Ask a follow-up question to probe for more details, like 'That's a good start, but could you explain more about...'.";
+      followUpInstruction = "The previous answer was weak. Ask a follow-up question to probe for more details, like 'That's a good start, but could you explain more about...(only if next question stays in same stage else move to next stage question)'.";
     } else if (followUpType === "deepen") {
-      followUpInstruction = "The previous answer was strong. Ask a follow-up question to deepen the topic, like 'That's correct, what would happen if...'.";
+      followUpInstruction = "The previous answer was strong. Ask a follow-up question to deepen the topic, like 'That's correct, what would happen if... '.only if next question stays in same stage else move to next stage question)'.";
     } else if (followUpType === "clarify") {
-      followUpInstruction = "The previous answer was ambiguous. Ask a follow-up question to clarify, like 'When you say X, do you mean...'.";
+      followUpInstruction = "The previous answer was ambiguous. Ask a follow-up question to clarify, like 'When you say X, do you mean...'.only if next question stays in same stage else move to next stage question)'.";
     }
   } else {
     followUpInstruction = "Ask a new question.";
@@ -70,7 +74,7 @@ Never provide answers.
     `;
   } else if (stage === "background") {
     systemPrompt += `
-      For thesuch as background stage, ask ONLY behavioral/soft skills questions about candidate's projects, skills, experience, and conflicts resolved. E.g., "Tell me about a time you resolved a conflict in a team." Do NOT ask technical questions.
+      For the such as background stage, ask ONLY behavioral/soft skills questions about candidate's projects, skills, experience, and conflicts resolved. E.g., "Tell me about a time you resolved a conflict in a team." Do NOT ask technical questions.
     `;
   } else if (stage === "knowledge") {
     systemPrompt += `
@@ -82,7 +86,7 @@ Never provide answers.
     `;
   } else if (stage === "wrapup") {
     systemPrompt += `
-      For the wrapup stage, ask final summary or feedback questions, like "What did you learn from this interview process?"
+      For the wrap up stage, ask final summary or feedback questions, like "What did you learn from this interview process?"
     `;
   } else {
     systemPrompt += systemPromptBase;

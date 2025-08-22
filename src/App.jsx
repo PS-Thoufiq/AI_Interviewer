@@ -4,6 +4,7 @@ import TechSelection from './TechSelection';
 import Interview from './Interview';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import Admin from './Admin';
 
 
 function App() {
@@ -27,6 +28,7 @@ function App() {
       <Routes>
         <Route path="/" element={<TechSelection />} />
         <Route path="/interview" element={<Interview />} />
+        <Route path="/admin" element={<Admin />} />
       </Routes>
     </BrowserRouter>
        </div>

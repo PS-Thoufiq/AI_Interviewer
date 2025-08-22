@@ -1,4 +1,3 @@
-// TechSelection.js (unchanged)
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import * as pdfjsLib from "pdfjs-dist/build/pdf";
@@ -8,17 +7,18 @@ import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min?url";
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 const technologies = [
-"Python",
-"Flutter",
-"HTML",
-"CSS",
-"Java Automation Testing ",
-"ReactJS",
-"Java",
-"JavaScript"
+  "Python",
+  "Flutter",
+  "HTML",
+  "CSS",
+  "Java Automation Testing ",
+  "ReactJS",
+  "Java",
+  "JavaScript"
 ];
 
 export default function TechSelection() {
+  const [userName, setUserName] = useState("");
   const [selectedTech, setSelectedTech] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
@@ -57,7 +57,6 @@ export default function TechSelection() {
     };
   }, []);
 
- 
   const extractTextFromPDF = async (file) => {
     try {
       const arrayBuffer = await file.arrayBuffer();
@@ -65,7 +64,6 @@ export default function TechSelection() {
       // Load PDF document
       const pdf = await pdfjsLib.getDocument({
         data: arrayBuffer,
-        // Enable worker if available, fallback to main thread if not
         disableWorker: false
       }).promise;
       
@@ -124,12 +122,17 @@ export default function TechSelection() {
   };
 
   const handleStartInterview = () => {
+    if (!userName) {
+      setError("Please enter your name!");
+      return;
+    }
     if (!selectedTech && resumeSkills.length === 0) {
       setError("Please select a technology or upload a resume with valid skills!");
       return;
     }
     navigate("/interview", {
       state: {
+        userName,
         topic: selectedTech || resumeSkills[0] || "General",
         resumeSkills: resumeSkills.length > 0 ? resumeSkills : selectedTech ? [selectedTech] : []
       }
@@ -140,6 +143,10 @@ export default function TechSelection() {
     setSelectedTech(tech);
     setSearchTerm(tech);
     setShowDropdown(false);
+  };
+
+  const handleAdminNavigation = () => {
+    navigate("/admin");
   };
 
   return (
@@ -168,6 +175,26 @@ export default function TechSelection() {
       }}>
         Choose a technology or upload your resume to start an AI-powered technical interview
       </p>
+
+      {/* User Name Input */}
+      <div style={{ marginBottom: '25px' }}>
+        <input
+          type="text"
+          value={userName}
+          onChange={(e) => setUserName(e.target.value)}
+          placeholder="Enter your name"
+          style={{
+            width: "100%",
+            padding: "12px 15px",
+            fontSize: "16px",
+            borderRadius: "6px",
+            backgroundColor: "#2d2d2d",
+            color: "#e0e0e0",
+            border: "1px solid #444",
+            marginBottom: "15px"
+          }}
+        />
+      </div>
 
       <div style={{ marginBottom: '25px' }}>
         <input
@@ -278,23 +305,41 @@ export default function TechSelection() {
         )}
       </div>
 
-      <button
-        onClick={handleStartInterview}
-        style={{
-          padding: "12px 30px",
-          fontSize: "16px",
-          backgroundColor: (selectedTech || resumeSkills.length > 0) ? "#4fc3f7" : "#333",
-          color: (selectedTech || resumeSkills.length > 0) ? "#1a1a1a" : "#666",
-          border: "none",
-          borderRadius: "6px",
-          cursor: (selectedTech || resumeSkills.length > 0) ? "pointer" : "not-allowed",
-          fontWeight: "bold",
-          transition: "all 0.2s"
-        }}
-        disabled={!selectedTech && resumeSkills.length === 0}
-      >
-        Start Interview
-      </button>
+      <div style={{ display: "flex", gap: "15px", justifyContent: "center" }}>
+        <button
+          onClick={handleStartInterview}
+          style={{
+            padding: "12px 30px",
+            fontSize: "16px",
+            backgroundColor: (userName && (selectedTech || resumeSkills.length > 0)) ? "#4fc3f7" : "#333",
+            color: (userName && (selectedTech || resumeSkills.length > 0)) ? "#1a1a1a" : "#666",
+            border: "none",
+            borderRadius: "6px",
+            cursor: (userName && (selectedTech || resumeSkills.length > 0)) ? "pointer" : "not-allowed",
+            fontWeight: "bold",
+            transition: "all 0.2s"
+          }}
+          disabled={!userName || (!selectedTech && resumeSkills.length === 0)}
+        >
+          Start Interview
+        </button>
+        <button
+          onClick={handleAdminNavigation}
+          style={{
+            padding: "12px 30px",
+            fontSize: "16px",
+            backgroundColor: "#4CAF50",
+            color: "#fff",
+            border: "none",
+            borderRadius: "6px",
+            cursor: "pointer",
+            fontWeight: "bold",
+            transition: "all 0.2s"
+          }}
+        >
+          Admin
+        </button>
+      </div>
 
       <div style={{
         marginTop: '40px',
