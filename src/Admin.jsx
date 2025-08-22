@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
 
 export default function Admin() {
   const [users, setUsers] = useState([]);
@@ -33,90 +34,11 @@ export default function Admin() {
       const res = await fetch(`http://10.3.0.10:3002/api/users/${userId}/interviews/${interviewId}`);
       if (!res.ok) throw new Error('Failed to fetch interview');
       const data = await res.json();
-      // Format reports to remove markdown and ensure clean text
-      data.userReport = formatUserReport(data.userReport);
-      data.clientReport = formatClientReport(data.clientReport);
       setSelectedInterview(data);
       setShowDetails(true);
     } catch (err) {
       setError(err.message);
     }
-  };
-
-  const formatUserReport = (report) => {
-    // Replace markdown symbols and format as plain text
-    return `
-Candidate Feedback Report for Python
-
-Strengths
-- Enthusiasm to move forward despite skipping questions.
-
-Areas to Improve
-- Provide more details about your Python projects.
-- Share specific challenges you faced and how you overcame them.
-- Discuss your contributions to team projects.
-
-Feedback
-- It's great that you are keen to proceed with the interview. For future interviews, try to provide more information regarding your projects and experiences. This will help the interviewer understand your skills and problem-solving abilities better.
-- When asked about challenges, think about specific instances where you had to troubleshoot or debug code. This shows your technical proficiency and your ability to handle real-world problems.
-- Team contributions are important. Share examples of how you collaborated with others, what role you played, and how your efforts contributed to the project's success.
-
-Remember, detailed and clear responses can significantly enhance the perception of your skills and experiences. Keep practicing and you'll improve over time!
-    `.trim();
-  };
-
-  const formatClientReport = (report) => {
-    // Replace markdown symbols and format as plain text
-    return `
-Recruiter Report for Python
-
-Candidate Overview
-- The candidate displayed a reserved communication style, showing reluctance and lack of engagement by skipping multiple questions.
-- Resume skill coverage was minimal as the candidate did not provide answers that demonstrated their Python skills.
-
-Pros
-- None Identified
-
-Cons
-- Lack of engagement and communication during the interview.
-- Skipped questions resulted in no demonstration of technical skills or problem-solving abilities.
-
-Highlight Reel
-- None Identified
-
-Alternative Answer Suggestions
-- Question: "Can you tell me about a project you've worked on using Python? What was your role and what did you accomplish?"
-  Candidate Answer: "Skipped"
-  Ideal Answer: "I worked on a web scraping project using Python, where I was responsible for writing scripts to extract data from various websites. I used libraries like BeautifulSoup and Selenium, and the project helped automate data collection, saving the team a significant amount of time."
-
-- Question: "Can you tell me about a time when you faced a challenge while working on a Python project? How did you handle it?"
-  Candidate Answer: "Skipped"
-  Ideal Answer: "I faced a challenge with data manipulation in a Pandas DataFrame. To overcome it, I researched the issue and experimented with different methods until I found an efficient solution. I also documented the process for future reference."
-
-- Question: "Can you tell me about a time when you worked in a team on a Python project? How did you contribute to the team's success?"
-  Candidate Answer: "Skipped"
-  Ideal Answer: "In a group project, I collaborated with team members to develop a Django web application. I focused on the backend development, ensuring data integrity and implementing RESTful APIs. My contributions helped streamline the development process and achieve our project milestones."
-
-Company Fit Prediction
-- 20% startups
-- 80% corporates
-
-Scoring
-- Clarity: 0/5
-- Accuracy: 0/5
-- Depth: 0/5
-
-Stage Analysis
-- Greeting: The candidate skipped the greeting stage, which set a tone of disengagement.
-- Background: The candidate skipped all background questions, providing no insight into their past experiences or skills.
-- Knowledge: No responses were provided to assess the candidate’s knowledge.
-- Scenario: The candidate did not participate in the scenario stage.
-- Wrapup: The interview was wrapped up without any significant input from the candidate.
-
-Overall Score
-- 0/100
-- Justification: The candidate did not provide any answers to the interview questions, resulting in no demonstration of technical skills, problem-solving abilities, or communication skills. This lack of engagement and clarity leads to a very low overall score.
-    `.trim();
   };
 
   const handleUserClick = (user) => {
@@ -261,117 +183,34 @@ Overall Score
 
                   <h4 style={styles.subSectionTitle}>User Report</h4>
                   <div style={styles.reportContainer}>
-                    <h5 style={styles.reportTitle}>Candidate Feedback Report for Python</h5>
-                    <div style={styles.reportSection}>
-                      <h6 style={styles.reportSubTitle}>Strengths</h6>
-                      <ul style={styles.reportList}>
-                        <li>Enthusiasm to move forward despite skipping questions.</li>
-                      </ul>
-                    </div>
-                    <div style={styles.reportSection}>
-                      <h6 style={styles.reportSubTitle}>Areas to Improve</h6>
-                      <ul style={styles.reportList}>
-                        <li>Provide more details about your Python projects.</li>
-                        <li>Share specific challenges you faced and how you overcame them.</li>
-                        <li>Discuss your contributions to team projects.</li>
-                      </ul>
-                    </div>
-                    <div style={styles.reportSection}>
-                      <h6 style={styles.reportSubTitle}>Feedback</h6>
-                      <p style={styles.reportText}>
-                        It's great that you are keen to proceed with the interview. For future interviews, try to provide more information regarding your projects and experiences. This will help the interviewer understand your skills and problem-solving abilities better.
-                      </p>
-                      <p style={styles.reportText}>
-                        When asked about challenges, think about specific instances where you had to troubleshoot or debug code. This shows your technical proficiency and your ability to handle real-world problems.
-                      </p>
-                      <p style={styles.reportText}>
-                        Team contributions are important. Share examples of how you collaborated with others, what role you played, and how your efforts contributed to the project's success.
-                      </p>
-                      <p style={styles.reportText}>
-                        Remember, detailed and clear responses can significantly enhance the perception of your skills and experiences. Keep practicing and you'll improve over time!
-                      </p>
-                    </div>
+                    {/* <h5 style={styles.reportTitle}>Candidate Feedback Report</h5> */}
+                    <ReactMarkdown
+                      components={{
+                        h1: ({ children }) => <h1 style={styles.reportTitle}>{children}</h1>,
+                        h2: ({ children }) => <h2 style={styles.reportSubTitle}>{children}</h2>,
+                        p: ({ children }) => <p style={styles.reportText}>{children}</p>,
+                        ul: ({ children }) => <ul style={styles.reportList}>{children}</ul>,
+                        li: ({ children }) => <li>{children}</li>,
+                      }}
+                    >
+                      {selectedInterview.userReport || "No user report available."}
+                    </ReactMarkdown>
                   </div>
 
                   <h4 style={styles.subSectionTitle}>Client Report</h4>
                   <div style={styles.reportContainer}>
-                    <h5 style={styles.reportTitle}>Recruiter Report for Python</h5>
-                    <div style={styles.reportSection}>
-                      <h6 style={styles.reportSubTitle}>Candidate Overview</h6>
-                      <p style={styles.reportText}>
-                        The candidate displayed a reserved communication style, showing reluctance and lack of engagement by skipping multiple questions.
-                      </p>
-                      <p style={styles.reportText}>
-                        Resume skill coverage was minimal as the candidate did not provide answers that demonstrated their Python skills.
-                      </p>
-                    </div>
-                    <div style={styles.reportSection}>
-                      <h6 style={styles.reportSubTitle}>Pros</h6>
-                      <p style={styles.reportText}>None Identified</p>
-                    </div>
-                    <div style={styles.reportSection}>
-                      <h6 style={styles.reportSubTitle}>Cons</h6>
-                      <ul style={styles.reportList}>
-                        <li>Lack of engagement and communication during the interview.</li>
-                        <li>Skipped questions resulted in no demonstration of technical skills or problem-solving abilities.</li>
-                      </ul>
-                    </div>
-                    <div style={styles.reportSection}>
-                      <h6 style={styles.reportSubTitle}>Highlight Reel</h6>
-                      <p style={styles.reportText}>None Identified</p>
-                    </div>
-                    <div style={styles.reportSection}>
-                      <h6 style={styles.reportSubTitle}>Alternative Answer Suggestions</h6>
-                      <ul style={styles.reportList}>
-                        <li>
-                          <strong>Question:</strong> "Can you tell me about a project you've worked on using Python? What was your role and what did you accomplish?"<br />
-                          <strong>Candidate Answer:</strong> "Skipped"<br />
-                          <strong>Ideal Answer:</strong> "I worked on a web scraping project using Python, where I was responsible for writing scripts to extract data from various websites. I used libraries like BeautifulSoup and Selenium, and the project helped automate data collection, saving the team a significant amount of time."
-                        </li>
-                        <li>
-                          <strong>Question:</strong> "Can you tell me about a time when you faced a challenge while working on a Python project? How did you handle it?"<br />
-                          <strong>Candidate Answer:</strong> "Skipped"<br />
-                          <strong>Ideal Answer:</strong> "I faced a challenge with data manipulation in a Pandas DataFrame. To overcome it, I researched the issue and experimented with different methods until I found an efficient solution. I also documented the process for future reference."
-                        </li>
-                        <li>
-                          <strong>Question:</strong> "Can you tell me about a time when you worked in a team on a Python project? How did you contribute to the team's success?"<br />
-                          <strong>Candidate Answer:</strong> "Skipped"<br />
-                          <strong>Ideal Answer:</strong> "In a group project, I collaborated with team members to develop a Django web application. I focused on the backend development, ensuring data integrity and implementing RESTful APIs. My contributions helped streamline the development process and achieve our project milestones."
-                        </li>
-                      </ul>
-                    </div>
-                    <div style={styles.reportSection}>
-                      <h6 style={styles.reportSubTitle}>Company Fit Prediction</h6>
-                      <ul style={styles.reportList}>
-                        <li>20% startups</li>
-                        <li>80% corporates</li>
-                      </ul>
-                    </div>
-                    <div style={styles.reportSection}>
-                      <h6 style={styles.reportSubTitle}>Scoring</h6>
-                      <ul style={styles.reportList}>
-                        <li>Clarity: 0/5</li>
-                        <li>Accuracy: 0/5</li>
-                        <li>Depth: 0/5</li>
-                      </ul>
-                    </div>
-                    <div style={styles.reportSection}>
-                      <h6 style={styles.reportSubTitle}>Stage Analysis</h6>
-                      <ul style={styles.reportList}>
-                        <li><strong>Greeting:</strong> The candidate skipped the greeting stage, which set a tone of disengagement.</li>
-                        <li><strong>Background:</strong> The candidate skipped all background questions, providing no insight into their past experiences or skills.</li>
-                        <li><strong>Knowledge:</strong> No responses were provided to assess the candidate’s knowledge.</li>
-                        <li><strong>Scenario:</strong> The candidate did not participate in the scenario stage.</li>
-                        <li><strong>Wrapup:</strong> The interview was wrapped up without any significant input from the candidate.</li>
-                      </ul>
-                    </div>
-                    <div style={styles.reportSection}>
-                      <h6 style={styles.reportSubTitle}>Overall Score</h6>
-                      <p style={styles.reportText}>0/100</p>
-                      <p style={styles.reportText}>
-                        <strong>Justification:</strong> The candidate did not provide any answers to the interview questions, resulting in no demonstration of technical skills, problem-solving abilities, or communication skills. This lack of engagement and clarity leads to a very low overall score.
-                      </p>
-                    </div>
+                    {/* <h5 style={styles.reportTitle}>Recruiter Report</h5> */}
+                    <ReactMarkdown
+                      components={{
+                        h1: ({ children }) => <h1 style={styles.reportTitle}>{children}</h1>,
+                        h2: ({ children }) => <h2 style={styles.reportSubTitle}>{children}</h2>,
+                        p: ({ children }) => <p style={styles.reportText}>{children}</p>,
+                        ul: ({ children }) => <ul style={styles.reportList}>{children}</ul>,
+                        li: ({ children }) => <li>{children}</li>,
+                      }}
+                    >
+                      {selectedInterview.clientReport || "No client report available."}
+                    </ReactMarkdown>
                   </div>
                 </div>
               </div>
@@ -430,10 +269,6 @@ const styles = {
     cursor: "pointer",
     transition: "all 0.3s ease",
     fontSize: "16px",
-    "&:hover": {
-      backgroundColor: "#4fc3f7",
-      color: "#1a1a1a",
-    },
   },
   backButton: {
     padding: "12px 20px",
@@ -445,9 +280,6 @@ const styles = {
     fontSize: "16px",
     fontWeight: "bold",
     transition: "all 0.3s ease",
-    "&:hover": {
-      backgroundColor: "#45a049",
-    },
   },
   mainContent: {
     flex: 1,
@@ -478,10 +310,6 @@ const styles = {
     transition: "all 0.3s ease",
     fontSize: "15px",
     lineHeight: "1.5",
-    "&:hover": {
-      backgroundColor: "#4fc3f7",
-      color: "#1a1a1a",
-    },
   },
   detailsSection: {
     backgroundColor: "#1a1a1a",
@@ -505,9 +333,6 @@ const styles = {
     cursor: "pointer",
     fontSize: "14px",
     transition: "all 0.3s ease",
-    "&:hover": {
-      backgroundColor: "#c62828",
-    },
   },
   detailsContent: {
     animation: "fadeIn 0.3s ease-in",
@@ -573,15 +398,6 @@ const styles = {
     fontSize: "14px",
     lineHeight: "1.6",
     margin: "10px 0",
-  },
-  report: {
-    whiteSpace: "pre-wrap",
-    backgroundColor: "#2d2d2d",
-    padding: "15px",
-    borderRadius: "8px",
-    border: "1px solid #444",
-    fontSize: "14px",
-    lineHeight: "1.6",
   },
   noData: {
     color: "#a0a0a0",

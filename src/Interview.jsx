@@ -8,6 +8,8 @@ import ReactMarkdown from "react-markdown";
 import logo from "./assets/zeero-ai.png";
 import InterviewSecurity from "./InterviewSecurity";
 
+const VOICE_RATE = 1.3;
+
 export default function Interview() {
   const location = useLocation();
   const { userName, topic, resumeSkills = [] } = location.state || { userName: '', topic: "Java Spring Boot", resumeSkills: [] };
@@ -32,6 +34,7 @@ export default function Interview() {
   const [selectedVoice, setSelectedVoice] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [proctoringLogs, setProctoringLogs] = useState([]);
+  const [shouldListen, setShouldListen] = useState(false);
   const orchestratorRef = useRef(null);
   const timerRef = useRef(null);
   const lastAIIndex = useRef(0);
@@ -84,6 +87,12 @@ export default function Interview() {
     }
   }, [interviewStarted, conversation.length]);
 
+  useEffect(() => {
+    if (!listening && shouldListen) {
+      SpeechRecognition.startListening({ continuous: true, language: "en-US" });
+    }
+  }, [listening, shouldListen]);
+
   const speak = (text) => {
     if (!window.speechSynthesis) {
       console.warn("Text-to-speech not supported in this browser.");
@@ -92,12 +101,13 @@ export default function Interview() {
     window.speechSynthesis.cancel();
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = "en-US";
+    utter.rate = VOICE_RATE;
     if (selectedVoice) utter.voice = selectedVoice;
     utter.onend = () => {
-      if (isWaitingForAnswer.current && !listening) {
+      if (isWaitingForAnswer.current) {
         resetTranscript();
         setAnswer("");
-        SpeechRecognition.startListening({ continuous: true, language: "en-US" });
+        setShouldListen(true);
       }
     };
     window.speechSynthesis.speak(utter);
@@ -112,6 +122,7 @@ export default function Interview() {
     const demoText = "Hello, I'm your AI interviewer.";
     const utter = new SpeechSynthesisUtterance(demoText);
     utter.lang = "en-US";
+    utter.rate = VOICE_RATE;
     if (voice) utter.voice = voice;
     window.speechSynthesis.speak(utter);
   };
@@ -136,6 +147,7 @@ export default function Interview() {
     if (listening) {
       SpeechRecognition.stopListening();
     }
+    setShouldListen(false);
     isWaitingForAnswer.current = false;
 
     const userAnswer = answer;
@@ -196,6 +208,7 @@ export default function Interview() {
     if (listening) {
       SpeechRecognition.stopListening();
     }
+    setShouldListen(false);
     isWaitingForAnswer.current = false;
 
     const updatedConversation = [...conversation, { role: "user", text: "Skipped", type: "regular", stage: lastQuestion.stage }];
@@ -236,6 +249,8 @@ export default function Interview() {
 
   const handleEndInterview = async () => {
     window.speechSynthesis.cancel();
+    setShouldListen(false);
+    SpeechRecognition.stopListening();
     isWaitingForAnswer.current = false;
     setLoading(true);
     setErrorMessage("");
@@ -293,6 +308,11 @@ export default function Interview() {
 
       const downloadReport = (reportText, type) => {
         const doc = new jsPDF();
+        const pageHeight = doc.internal.pageSize.height;
+        const margin = 15;
+        const lineHeight = 7;
+        const maxY = pageHeight - 20;
+
         doc.setFontSize(20);
         doc.setTextColor(44, 62, 80);
         doc.text(
@@ -303,18 +323,39 @@ export default function Interview() {
         doc.setTextColor(149, 165, 166);
         doc.text(`Generated on ${new Date().toLocaleString()}`, 105, 28, { align: "center" });
         doc.setFontSize(12);
-        doc.text(`Experience Level: ${getExperienceLabel(orchestratorRef.current?.experienceLevel || experience || "0-2")}`, 15, 40);
-        if (resumeSkills.length > 0) {
-          doc.text(`Resume Skills: ${resumeSkills.join(", ")}`, 15, 48);
-        }
-        doc.text(`Interview Duration: ${formatTimer(timer)}`, 15, resumeSkills.length > 0 ? 56 : 48);
-        doc.setFontSize(12);
         doc.setTextColor(33, 37, 41);
-        const splitText = doc.splitTextToSize(reportText.replace(/## /g, "\n").replace(/# /g, "\n\n"), 180);
-        doc.text(splitText, 15, resumeSkills.length > 0 ? 64 : 56);
+        doc.text(`Experience Level: ${getExperienceLabel(orchestratorRef.current?.experienceLevel || experience || "0-2")}`, 15, 40);
+        let y = 40 + lineHeight;
+        if (resumeSkills.length > 0) {
+          doc.text(`Resume Skills: ${resumeSkills.join(", ")}`, 15, y);
+          y += lineHeight;
+        }
+        doc.text(`Interview Duration: ${formatTimer(timer)}`, 15, y);
+        y += lineHeight * 2;
+
+        const processedText = reportText.replace(/## /g, "").replace(/# /g, "");
+        const splitText = doc.splitTextToSize(processedText, 180);
+
+        for (let i = 0; i < splitText.length; i++) {
+          if (y + lineHeight > maxY) {
+            doc.addPage();
+            y = 20;
+          }
+          doc.text(splitText[i], margin, y);
+          y += lineHeight;
+        }
+
+        if (y + 20 > maxY) {
+          doc.addPage();
+          y = 20;
+        } else {
+          y = pageHeight - 12;
+        }
+
         doc.setFontSize(10);
         doc.setTextColor(149, 165, 166);
-        doc.text(`AI Interviewer ${type === 'user' ? 'Candidate' : 'Recruiter'} Report`, 105, 285, { align: "center" });
+        doc.text(`AI Interviewer ${type === 'user' ? 'Candidate' : 'Recruiter'} Report`, 105, y, { align: "center" });
+
         doc.save(`${type}-report-${topic}-${new Date().toISOString().slice(0, 10)}.pdf`);
       };
 
@@ -335,20 +376,6 @@ export default function Interview() {
       clearInterval(timerRef.current);
     }
   };
-
-  useEffect(() => {
-    if (!listening) return;
-    let lastTranscript = transcript;
-    const interval = setInterval(() => {
-      if (transcript === lastTranscript && transcript.trim() !== "") {
-        SpeechRecognition.stopListening();
-        clearInterval(interval);
-      } else {
-        lastTranscript = transcript;
-      }
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [listening, transcript]);
 
   const handleGenerateUserReport = async () => {
     setUserReport("");
@@ -402,6 +429,11 @@ export default function Interview() {
     if (!userReport) return;
 
     const doc = new jsPDF();
+    const pageHeight = doc.internal.pageSize.height;
+    const margin = 15;
+    const lineHeight = 7;
+    const maxY = pageHeight - 20;
+
     doc.setFontSize(20);
     doc.setTextColor(44, 62, 80);
     doc.text(`Candidate Feedback Report: ${resumeSkills.length > 0 ? resumeSkills.join(", ") : topic}`, 105, 20, { align: "center" });
@@ -409,18 +441,38 @@ export default function Interview() {
     doc.setTextColor(149, 165, 166);
     doc.text(`Generated on ${new Date().toLocaleString()}`, 105, 28, { align: "center" });
     doc.setFontSize(12);
-    doc.text(`Experience Level: ${getExperienceLabel(orchestratorRef.current?.experienceLevel || experience || "0-2")}`, 15, 40);
-    if (resumeSkills.length > 0) {
-      doc.text(`Resume Skills: ${resumeSkills.join(", ")}`, 15, 48);
-    }
-    doc.text(`Interview Duration: ${formatTimer(timer)}`, 15, resumeSkills.length > 0 ? 56 : 48);
-    doc.setFontSize(12);
     doc.setTextColor(33, 37, 41);
-    const splitText = doc.splitTextToSize(userReport.replace(/## /g, "\n").replace(/# /g, "\n\n"), 180);
-    doc.text(splitText, 15, resumeSkills.length > 0 ? 64 : 56);
+    doc.text(`Experience Level: ${getExperienceLabel(orchestratorRef.current?.experienceLevel || experience || "0-2")}`, 15, 40);
+    let y = 40 + lineHeight;
+    if (resumeSkills.length > 0) {
+      doc.text(`Resume Skills: ${resumeSkills.join(", ")}`, 15, y);
+      y += lineHeight;
+    }
+    doc.text(`Interview Duration: ${formatTimer(timer)}`, 15, y);
+    y += lineHeight * 2;
+
+    const processedText = userReport.replace(/## /g, "").replace(/# /g, "");
+    const splitText = doc.splitTextToSize(processedText, 180);
+
+    for (let i = 0; i < splitText.length; i++) {
+      if (y + lineHeight > maxY) {
+        doc.addPage();
+        y = 20;
+      }
+      doc.text(splitText[i], margin, y);
+      y += lineHeight;
+    }
+
+    if (y + 20 > maxY) {
+      doc.addPage();
+      y = 20;
+    } else {
+      y = pageHeight - 12;
+    }
+
     doc.setFontSize(10);
     doc.setTextColor(149, 165, 166);
-    doc.text("AI Interviewer Candidate Report", 105, 285, { align: "center" });
+    doc.text("AI Interviewer Candidate Report", 105, y, { align: "center" });
     doc.save(`candidate-report-${topic}-${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
@@ -428,6 +480,11 @@ export default function Interview() {
     if (!clientReport) return;
 
     const doc = new jsPDF();
+    const pageHeight = doc.internal.pageSize.height;
+    const margin = 15;
+    const lineHeight = 7;
+    const maxY = pageHeight - 20;
+
     doc.setFontSize(20);
     doc.setTextColor(44, 62, 80);
     doc.text(`Recruiter Report: ${resumeSkills.length > 0 ? resumeSkills.join(", ") : topic}`, 105, 20, { align: "center" });
@@ -435,18 +492,38 @@ export default function Interview() {
     doc.setTextColor(149, 165, 166);
     doc.text(`Generated on ${new Date().toLocaleString()}`, 105, 28, { align: "center" });
     doc.setFontSize(12);
-    doc.text(`Experience Level: ${getExperienceLabel(orchestratorRef.current?.experienceLevel || experience || "0-2")}`, 15, 40);
-    if (resumeSkills.length > 0) {
-      doc.text(`Resume Skills: ${resumeSkills.join(", ")}`, 15, 48);
-    }
-    doc.text(`Interview Duration: ${formatTimer(timer)}`, 15, resumeSkills.length > 0 ? 56 : 48);
-    doc.setFontSize(12);
     doc.setTextColor(33, 37, 41);
-    const splitText = doc.splitTextToSize(clientReport.replace(/## /g, "\n").replace(/# /g, "\n\n"), 180);
-    doc.text(splitText, 15, resumeSkills.length > 0 ? 64 : 56);
+    doc.text(`Experience Level: ${getExperienceLabel(orchestratorRef.current?.experienceLevel || experience || "0-2")}`, 15, 40);
+    let y = 40 + lineHeight;
+    if (resumeSkills.length > 0) {
+      doc.text(`Resume Skills: ${resumeSkills.join(", ")}`, 15, y);
+      y += lineHeight;
+    }
+    doc.text(`Interview Duration: ${formatTimer(timer)}`, 15, y);
+    y += lineHeight * 2;
+
+    const processedText = clientReport.replace(/## /g, "").replace(/# /g, "");
+    const splitText = doc.splitTextToSize(processedText, 180);
+
+    for (let i = 0; i < splitText.length; i++) {
+      if (y + lineHeight > maxY) {
+        doc.addPage();
+        y = 20;
+      }
+      doc.text(splitText[i], margin, y);
+      y += lineHeight;
+    }
+
+    if (y + 20 > maxY) {
+      doc.addPage();
+      y = 20;
+    } else {
+      y = pageHeight - 12;
+    }
+
     doc.setFontSize(10);
     doc.setTextColor(149, 165, 166);
-    doc.text("AI Interviewer Recruiter Report", 105, 285, { align: "center" });
+    doc.text("AI Interviewer Recruiter Report", 105, y, { align: "center" });
     doc.save(`recruiter-report-${topic}-${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
@@ -884,6 +961,7 @@ export default function Interview() {
               value={answer}
               onChange={(e) => setAnswer(e.target.value)}
               placeholder={interviewStarted ? "Speak or type your answer..." : "Please start the interview first"}
+              spellCheck={true}
               style={{
                 width: "100%",
                 minHeight: "80px",
@@ -998,7 +1076,7 @@ export default function Interview() {
                 window.speechSynthesis.cancel();
                 resetTranscript();
                 setAnswer("");
-                SpeechRecognition.startListening({ continuous: true, language: "en-US" });
+                setShouldListen(true);
               }}
               disabled={listening || loading || !interviewStarted}
               style={buttonStyle}
@@ -1008,6 +1086,7 @@ export default function Interview() {
             <button
               onClick={() => {
                 SpeechRecognition.stopListening();
+                setShouldListen(false);
                 handleSend();
               }}
               disabled={listening ? false : !answer.trim() || loading || !interviewStarted}
