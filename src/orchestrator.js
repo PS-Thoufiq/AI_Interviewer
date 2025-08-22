@@ -8,7 +8,7 @@ export class InterviewOrchestrator {
     this.knowledgeQuestionsAsked = 0;
     this.maxKnowledgeQuestions = 2;
     this.scenarioQuestionsAsked = 0;
-    this.maxScenarioQuestions = 2;
+    this.maxScenarioQuestions = 6;
     this.currentSkillIndex = 0;
     this.experienceLevel = null;
     this.backgroundResponses = [];

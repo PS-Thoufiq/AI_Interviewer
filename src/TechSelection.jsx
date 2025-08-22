@@ -7,6 +7,7 @@ import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min?url";
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 const technologies = [
+  "Service Now",
   "Python",
   "Flutter",
   "HTML",
